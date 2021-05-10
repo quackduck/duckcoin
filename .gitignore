@@ -1,0 +1,7 @@
+/duckcoin
+/client/duckcoin
+*key*
+*.json
+.idea
+/icoin
+.DS_Store
