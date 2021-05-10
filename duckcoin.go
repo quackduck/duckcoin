@@ -77,7 +77,7 @@ func main() {
 	//go func() {
 	if !fileExists(BlockchainFile) {
 		t := time.Now() // genesis time
-		genesisBlock := Block{0, t.Unix(), "Genesis block", "", "🙂", "Go Gophers! github.com/quackduck", "Ishan Goel (quackduck)", Transaction{"Genesis transaction", "", "", 0, ""}}
+		genesisBlock := Block{0, t.Unix(), "Genesis block. Thank you so much to Jason Antwi-Appah for the incredible name that is Duckcoin. QUACK!", "", "🐤", "Go Gophers and DUCKS! github.com/quackduck", "Ishan Goel (quackduck on GitHub)", Transaction{"Genesis transaction", "", "", 0, ""}}
 		genesisBlock.Hash = calculateHash(genesisBlock)
 		fmt.Println(toJson(genesisBlock))
 		f, _ := os.Create(BlockchainFile)

@@ -18,12 +18,23 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"os/user"
 	"strconv"
 	"strings"
 	"time"
 )
 
-const Difficulty = 5
+var (
+	b           Block
+	url         = "http://devzat.hackclub.com:8080"
+	home, _     = os.UserHomeDir()
+	u, _        = user.Current()
+	username    = u.Name
+	configDir   = home + "/.config/duckcoin"
+	pubkeyFile  = configDir + "pubkey.pem"
+	privkeyFile = configDir + "privkey.pem"
+	Difficulty  = 5
+)
 
 type Block struct {
 	// Index is the Block number in the Icoin Blockchain
@@ -56,11 +67,9 @@ type Transaction struct {
 	Signature string
 }
 
-var b Block
-var url = "http://localhost:8080"
-
 func main() {
-	solver, privkey, err := loadKeyPair("pubkey.pem", "privkey.pem")
+	os.MkdirAll(configDir, 0755)
+	solver, privkey, err := loadKeyPair(pubkeyFile, privkeyFile)
 	if err != nil {
 		fmt.Println(err)
 		solver, privkey, err = makeKeyPair()
@@ -68,7 +77,7 @@ func main() {
 			fmt.Println(err)
 			return
 		}
-		err = saveKeyPair(solver, privkey, "pubkey.pem", "privkey.pem")
+		err = saveKeyPair(solver, privkey, pubkeyFile, privkeyFile)
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -79,7 +88,6 @@ func main() {
 	s, _ = x509.MarshalPKCS8PrivateKey(privkey)
 	privkeyEncoded := b64(s)
 	fmt.Printf("Using these key pairs: \nPub: %s\nPriv:%s\n", solverEncoded, privkeyEncoded)
-	u := os.Getenv("USER")
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -92,7 +100,7 @@ func main() {
 		}
 		_ = json.NewDecoder(r.Body).Decode(&b)
 		_ = r.Body.Close()
-		b = makeBlock(privkey, b, "Mined by the official Icoin CLI User: "+u, solverEncoded, Transaction{"", solverEncoded, "", 0, ""})
+		b = makeBlock(privkey, b, "Mined by the official Duckcoin CLI User: "+username, solverEncoded, Transaction{"", solverEncoded, "", 0, ""})
 		j, jerr := json.Marshal(b)
 		if jerr != nil {
 			fmt.Println(err)
