@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/gob"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -16,7 +15,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
-	"math/big"
 	"net/http"
 	"os"
 	"os/user"
@@ -29,13 +27,13 @@ import (
 
 var (
 	b           Block
-	url         = "http://devzat.hackclub.com:8080"
+	url         = "http://localhost:8080"
 	home, _     = os.UserHomeDir()
 	u, _        = user.Current()
 	username    = u.Name
 	configDir   = home + "/.config/duckcoin"
-	pubkeyFile  = configDir + "pubkey.pem"
-	privkeyFile = configDir + "privkey.pem"
+	pubkeyFile  = configDir + "/pubkey.pem"
+	privkeyFile = configDir + "/privkey.pem"
 	Difficulty  = 5
 	helpMsg     = `Duckcoin - quack money
 Usage: duckcoin [<num of blocks>] [-t/--to <pubkey>] [-a/--amount <quacks>] [-m/--message <msg>]
@@ -43,7 +41,7 @@ When run without arguments, Duckcoin mines Quacks to the key in ~/.config/duckco
 Examples:
    duckcoin
    duckcoin 4 # mines 4 blocks
-   duckcoin 3 -t MFkwEwY...335OxW8QuCQ5ryaA== -a 1 -m "Payment of 1 Quack to Ishan" # mines three blocks that pay 1 Quack
+   duckcoin 3 -t  -a 1 -m "Payment of 1 Quack to Ishan" # mines three blocks that pay 1 Quack
 `
 )
 
@@ -69,12 +67,14 @@ type Block struct {
 type Transaction struct {
 	// Data is any (arbitrary) additional data.
 	Data string
-	//Sender is the public key of the sender.
+	//Sender is the address of the sender.
 	Sender string
-	//Receiver is the public key of the receiver.
+	//Receiver is the address of the receiver.
 	Receiver string
 	//Amount is the amount to be payed by the Sender to the Receiver. It is always a positive number.
-	Amount    int
+	Amount int
+	//PubKey is the Duckcoin formatted public key of the sender
+	PubKey    string
 	Signature string
 }
 
@@ -87,21 +87,23 @@ func main() {
 	data := ""
 	numOfBlocks = math.MaxInt64
 
-	if ok, i := argsHaveOption("--to", "-t"); ok {
+	if ok, i := argsHaveOption("to", "t"); ok {
 		if len(os.Args) < i+2 {
 			fmt.Println("Too few arguments to --to")
 			return
 		}
 		receiver = os.Args[i+1]
+		//fmt.Println("Sending to", receiver)
 	}
-	if ok, i := argsHaveOption("--message", "-m"); ok {
+	if ok, i := argsHaveOption("message", "m"); ok {
 		if len(os.Args) < i+2 {
 			fmt.Println("Too few arguments to --message")
 			return
 		}
 		data = os.Args[i+1]
+		//fmt.Println("With message", data)
 	}
-	if ok, i := argsHaveOption("--amount", "-a"); ok {
+	if ok, i := argsHaveOption("amount", "a"); ok {
 		if len(os.Args) < i+2 {
 			fmt.Println("Too few arguments to --amount")
 			return
@@ -111,6 +113,7 @@ func main() {
 			fmt.Println(err)
 			return
 		}
+		//fmt.Println("And amount", amount)
 	}
 	if len(os.Args) > 1 {
 		i, err := strconv.ParseInt(os.Args[1], 10, 64)
@@ -120,25 +123,26 @@ func main() {
 	}
 
 	os.MkdirAll(configDir, 0755)
-	solver, privkey, err := loadKeyPair(pubkeyFile, privkeyFile)
+	pubkey, privkey, err := loadKeyPair(pubkeyFile, privkeyFile)
 	if err != nil {
 		fmt.Println(err)
-		solver, privkey, err = makeKeyPair()
+		pubkey, privkey, err = makeKeyPair()
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-		err = saveKeyPair(solver, privkey, pubkeyFile, privkeyFile)
+		err = saveKeyPair(pubkey, privkey, pubkeyFile, privkeyFile)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
 	}
-	s, _ := x509.MarshalPKIXPublicKey(solver)
-	solverEncoded := b64(s)
-	s, _ = x509.MarshalPKCS8PrivateKey(privkey)
-	privkeyEncoded := b64(s)
-	fmt.Printf("Using these key pairs: \nPub: %s\nPriv: %s\n", color.HiGreenString(solverEncoded), color.HiRedString(privkeyEncoded))
+	//s, _ := x509.MarshalPKIXPublicKey(solver)
+	//pubkeyEncoded := publicKeytoduck(pubkey)
+	//privkeyEncoded := privateKeytoduck(privkey)
+	solver := duckToAddress(pubkey)
+	//s, _ = x509.MarshalPKCS8PrivateKey(privkey)
+	fmt.Printf("Using these key pairs: \nPub: %s\nPriv: %s\nYour Address: %s\n", color.HiGreenString(pubkey), color.HiRedString(privkey), color.HiBlueString(solver))
 
 	var i int64
 	for ; i < numOfBlocks; i++ {
@@ -149,7 +153,7 @@ func main() {
 		}
 		_ = json.NewDecoder(r.Body).Decode(&b)
 		_ = r.Body.Close()
-		b = makeBlock(privkey, b, "Mined by the official Duckcoin CLI User: "+username, solverEncoded, Transaction{data, solverEncoded, receiver, amount, ""})
+		b = makeBlock(privkey, b, "Mined by the official Duckcoin CLI User: "+username, solver, Transaction{data, solver, receiver, amount, pubkey, ""})
 		j, jerr := json.Marshal(b)
 		if jerr != nil {
 			fmt.Println(jerr)
@@ -170,8 +174,13 @@ func main() {
 	}
 }
 
+func duckToAddress(duckkey string) string {
+	hash := sha256.Sum256([]byte(duckkey))
+	return b64(hash[:])
+}
+
 // create a new block using previous block's hash
-func makeBlock(privkey *ecdsa.PrivateKey, oldBlock Block, data string, solver string, tx Transaction) Block {
+func makeBlock(privkey string, oldBlock Block, data string, solver string, tx Transaction) Block {
 	var newBlock Block
 
 	t := time.Now()
@@ -185,6 +194,7 @@ func makeBlock(privkey *ecdsa.PrivateKey, oldBlock Block, data string, solver st
 	if newBlock.Tx.Amount == 0 {
 		newBlock.Tx.Receiver = ""
 		newBlock.Tx.Sender = ""
+		newBlock.Tx.PubKey = ""
 		newBlock.Tx.Signature = ""
 	}
 
@@ -212,9 +222,9 @@ func makeBlock(privkey *ecdsa.PrivateKey, oldBlock Block, data string, solver st
 	return newBlock
 }
 
-type ECDSASignature struct {
-	R, S *big.Int
-}
+//type ECDSASignature struct {
+//	R, S *big.Int
+//}
 
 func b64(data []byte) string {
 	return base64.StdEncoding.EncodeToString(data)
@@ -225,15 +235,15 @@ func b64(data []byte) string {
 //	return b64(marshalled)
 //}
 
-func makeKeyPair() (*ecdsa.PublicKey, *ecdsa.PrivateKey, error) {
+func makeKeyPair() (pub string, priv string, err error) {
 	pubkeyCurve := elliptic.P256() // see http://golang.org/pkg/crypto/elliptic/#P256
-
-	privatekey, err := ecdsa.GenerateKey(pubkeyCurve, rand.Reader) // this generates a public & private key pair
+	//pubkeyCurve := elliptic.P256()
+	privkey, err := ecdsa.GenerateKey(pubkeyCurve, rand.Reader) // this generates a public & private key pair
 
 	if err != nil {
-		return nil, nil, err
+		return "", "", err
 	}
-	pubkey := &privatekey.PublicKey
+	pubkey := &privkey.PublicKey
 	//fmt.Println("Private Key:")
 	//marshalled, _ := x509.MarshalPKCS8PrivateKey(privatekey)
 	//fmt.Println(b64(marshalled))
@@ -241,74 +251,133 @@ func makeKeyPair() (*ecdsa.PublicKey, *ecdsa.PrivateKey, error) {
 	//fmt.Println("Public Key:")
 	//marshalled, _ = x509.MarshalPKIXPublicKey(pubkey)
 	//fmt.Println(b64(marshalled))
-	return pubkey, privatekey, nil
+	pub, err = publicKeytoduck(pubkey)
+	if err != nil {
+		return "", "", err
+	}
+	priv, err = privateKeytoduck(privkey)
+	if err != nil {
+		return "", "", err
+	}
+	return pub, priv, nil
 }
 
-func saveKeyPair(pubkey *ecdsa.PublicKey, privkey *ecdsa.PrivateKey, pubfile string, privfile string) error {
-	marshalled, _ := x509.MarshalPKCS8PrivateKey(privkey)
+//// duckToPublicKey returns a deserialized base64 encoded public key
+//func duckToPublicKey(duckkey string) (*ecdsa.PublicKey, error) {
+//	d, err := base64.StdEncoding.DecodeString(duckkey)
+//	if err != nil {
+//		return nil, err
+//	}
+//	p, err := x509.ParsePKIXPublicKey(d)
+//	if err != nil {
+//		return nil, err
+//	}
+//	pubkey, ok := p.(*ecdsa.PublicKey)
+//	if !ok {
+//		return nil, errors.New("pubkey is not of type *ecdsa.PublicKey")
+//	}
+//	return pubkey, nil
+//}
+
+// duckToPrivateKey returns a deserialized base64 encoded private key
+func duckToPrivateKey(duckkey string) (*ecdsa.PrivateKey, error) {
+	d, err := base64.StdEncoding.DecodeString(duckkey)
+	if err != nil {
+		return nil, err
+	}
+	p, err := x509.ParseECPrivateKey(d)
+	if err != nil {
+		return nil, err
+	}
+	//privkey, ok := p.(*ecdsa.PrivateKey)
+	//if !ok {
+	//	return nil, errors.New("pubkey is not of type *ecdsa.PublicKey")
+	//}
+	return p, nil
+}
+
+// publicKeytoduck returns a serialized public key as a base64 string
+func publicKeytoduck(pubkey *ecdsa.PublicKey) (string, error) {
+	marshalled, err := x509.MarshalPKIXPublicKey(pubkey)
+	if err != nil {
+		return "", err
+	}
+	return b64(marshalled), nil
+}
+
+// privateKeytoduck returns a serialized private key as a base64 string
+func privateKeytoduck(privkey *ecdsa.PrivateKey) (string, error) {
+	marshalled, err := x509.MarshalECPrivateKey(privkey)
+	if err != nil {
+		return "", err
+	}
+	return b64(marshalled), nil
+}
+
+func saveKeyPair(pubkey string, privkey string, pubfile string, privfile string) error {
+	// saveKeyPair decodes the keys because PEM base64s them too, and decoding means that the pubkey in duck format is the same as the data in the PEM file. (which is nice but an arbitrary decision)
+	d, _ := base64.StdEncoding.DecodeString(privkey)
 	b := pem.EncodeToMemory(&pem.Block{
-		Type:  "ECDSA PRIVATE KEY",
-		Bytes: marshalled,
+		Type:  "DUCKCOIN (ECDSA) PRIVATE KEY",
+		Bytes: d,
 	})
 	if err := ioutil.WriteFile(privfile, b, 0755); err != nil {
 		return err
 	}
 
-	marshalled, _ = x509.MarshalPKIXPublicKey(pubkey)
+	d, _ = base64.StdEncoding.DecodeString(pubkey)
 	b = pem.EncodeToMemory(&pem.Block{
-		Type:  "ECDSA PUBLIC KEY",
-		Bytes: marshalled,
+		Type:  "DUCKCOIN (ECDSA) PUBLIC KEY",
+		Bytes: d,
 	})
 	if err := ioutil.WriteFile(pubfile, b, 0755); err != nil {
 		return err
 	}
 
 	color.HiYellow("Your keys have been saved to " + pubfile + " and " + privfile)
-	color.HiRedString("Do not tell anyone the contents of " + privfile)
+	color.HiRed("Do not tell anyone the contents of " + privfile)
 	return nil
 }
 
-func loadKeyPair(pubfile string, privfile string) (*ecdsa.PublicKey, *ecdsa.PrivateKey, error) {
+func loadKeyPair(pubfile string, privfile string) (pub string, priv string, err error) {
+	// see comment in saveKeyPair for why the keys are base64 encoded before passed to duckTo*Key
 	data, err := ioutil.ReadFile(pubfile)
 	if err != nil {
-		return nil, nil, err
+		return "", "", err
 	}
-	pukey, _ := pem.Decode(data)
-	if pukey == nil {
-		return nil, nil, errors.New("could not decode PEM data from " + pubfile)
+	key, _ := pem.Decode(data)
+	if key == nil {
+		return "", "", errors.New("could not decode PEM data from " + pubfile)
 	}
-	p, err := x509.ParsePKIXPublicKey(pukey.Bytes)
-	pubkey, ok := p.(*ecdsa.PublicKey)
-	if !ok {
-		return nil, nil, errors.New("pubkey is not of type *ecdsa.PublicKey")
-	}
+	pubkey := base64.StdEncoding.EncodeToString(key.Bytes)
 	data, err = ioutil.ReadFile(privfile)
 	if err != nil {
-		return nil, nil, err
+		return "", "", err
 	}
-	pukey, _ = pem.Decode(data)
-	if pukey == nil {
-		return nil, nil, errors.New("could not decode PEM data from " + privfile)
+	key, _ = pem.Decode(data)
+	if key == nil {
+		return "", "", errors.New("could not decode PEM data from " + privfile)
 	}
-	p, err = x509.ParsePKCS8PrivateKey(pukey.Bytes)
-	privkey, ok := p.(*ecdsa.PrivateKey)
-	if !ok {
-		return nil, nil, errors.New("pubkey is not of type *ecdsa.PrivateKey")
-	}
+	privkey := base64.StdEncoding.EncodeToString(key.Bytes)
+	color.HiYellow("Loaded keys from " + pubfile + " and " + privfile)
 	return pubkey, privkey, nil
 }
 
-func makeSignature(privatekey *ecdsa.PrivateKey, message string) (string, error) {
+func makeSignature(privkey string, message string) (string, error) {
 	hash := sha256.Sum256([]byte(message))
-	r, s, err := ecdsa.Sign(rand.Reader, privatekey, hash[:])
+	key, err := duckToPrivateKey(privkey)
 	if err != nil {
 		return "", err
 	}
-	b := new(bytes.Buffer)
-	err = gob.NewEncoder(b).Encode(ECDSASignature{r, s})
+	data, err := ecdsa.SignASN1(rand.Reader, key, hash[:])
 	if err != nil {
 		return "", err
 	}
+	//b := new(bytes.Buffer)
+	//err = gob.NewEncoder(b).Encode(ECDSASignature{r, s})
+	//if err != nil {
+	//	return "", err
+	//}
 	//signature, err := asn1.Marshal(ECDSASignature{r, s})
 	//if err != nil {
 	//	return "", err
@@ -317,7 +386,7 @@ func makeSignature(privatekey *ecdsa.PrivateKey, message string) (string, error)
 	//signature = append(signature, s.Bytes()...)
 	//fmt.Printf("Signature:" + b64(b.Bytes()))
 	//fmt.Printf("hash %v key %x", hash, privatekey.PublicKey)
-	return b64(b.Bytes()), nil
+	return b64(data), nil
 }
 
 func calculateHash(block Block) string {

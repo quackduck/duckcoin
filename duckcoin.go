@@ -1,19 +1,16 @@
 package main
 
 import (
-	"bytes"
 	"crypto/ecdsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/gob"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math/big"
 	"net/http"
 	"os"
 	"strconv"
@@ -52,32 +49,26 @@ type Block struct {
 type Transaction struct {
 	// Data is any (arbitrary) additional data.
 	Data string
-	// Sender is the public key of the sender.
+	//Sender is the address of the sender.
 	Sender string
-	// Receiver is the public key of the receiver.
+	//Receiver is the address of the receiver.
 	Receiver string
-	// Amount is the amount to be payed by the Sender to the Receiver. It is always a positive number or zero.
-	Amount    int
+	//Amount is the amount to be payed by the Sender to the Receiver. It is always a positive number.
+	Amount int
+	//PubKey is the Duckcoin formatted public key of the sender
+	PubKey    string
 	Signature string
 }
 
 var (
-	// Blockchain is a series of Blocks
-	//Blockchain []Block
 	NewestBlock Block
 	Balances    = make(map[string]int)
 )
 
-//// Message takes incoming JSON payload for writing heart rate
-//type Message struct {
-//	BPM int
-//}
-
 func main() {
-	//go func() {
 	if !fileExists(BlockchainFile) {
 		t := time.Now() // genesis time
-		genesisBlock := Block{0, t.Unix(), "Genesis block. Thank you so much to Jason Antwi-Appah for the incredible name that is Duckcoin. QUACK!", "", "🐤", "Go Gophers and DUCKS! github.com/quackduck", "Ishan Goel (quackduck on GitHub)", Transaction{"Genesis transaction", "", "", 0, ""}}
+		genesisBlock := Block{0, t.Unix(), "Genesis block. Thank you so much to Jason Antwi-Appah for the incredible name that is Duckcoin. QUACK!", "", "🐤", "Go Gophers and DUCKS! github.com/quackduck", "Ishan Goel (quackduck on GitHub)", Transaction{"Genesis transaction", "", "", 0, "", ""}}
 		genesisBlock.Hash = calculateHash(genesisBlock)
 		fmt.Println(toJson(genesisBlock))
 		f, _ := os.Create(BlockchainFile)
@@ -156,87 +147,17 @@ func main() {
 
 }
 
-type ECDSASignature struct {
-	R, S *big.Int
-}
-
-//func makeKeyPair() (*ecdsa.PublicKey, *ecdsa.PrivateKey, error) {
-//	pubkeyCurve := elliptic.P256() // see http://golang.org/pkg/crypto/elliptic/#P256
-//
-//	privatekey, err := ecdsa.GenerateKey(pubkeyCurve, rand.Reader) // this generates a public & private key pair
-//
-//	if err != nil {
-//		return nil, nil, err
-//	}
-//	pubkey := &privatekey.PublicKey
-//	fmt.Println("Private Key:")
-//	marshalled, _ := x509.MarshalPKCS8PrivateKey(privatekey)
-//	fmt.Println(b64(marshalled))
-//
-//	fmt.Println("Public Key:")
-//	marshalled, _ = x509.MarshalPKIXPublicKey(pubkey)
-//	fmt.Println(b64(marshalled))
-//	return pubkey, privatekey, nil
-//}
-//
-//func saveKeyPair(pubkey *ecdsa.PublicKey, privkey *ecdsa.PrivateKey, pubfile string, privfile string) error {
-//	marshalled, _ := x509.MarshalPKCS8PrivateKey(privkey)
-//	b := pem.EncodeToMemory(&pem.Block{
-//		Type:  "ECDSA PRIVATE KEY",
-//		Bytes: marshalled,
-//	})
-//	if err := ioutil.WriteFile(privfile, b, 0755); err != nil {
-//		return err
-//	}
-//
-//	marshalled, _ = x509.MarshalPKIXPublicKey(pubkey)
-//	b = pem.EncodeToMemory(&pem.Block{
-//		Type:  "ECDSA PUBLIC KEY",
-//		Bytes: marshalled,
-//	})
-//	if err := ioutil.WriteFile(pubfile, b, 0755); err != nil {
-//		return err
-//	}
-//	return nil
-//}
-//
-//func makeSignature(privatekey *ecdsa.PrivateKey, message string) (string, error) {
-//	hash := sha256.Sum256([]byte(message))
-//	r, s, err := ecdsa.Sign(rand.Reader, privatekey, hash[:])
-//	if err != nil {
-//		return "", err
-//	}
-//	signature, err := asn1.Marshal(ECDSASignature{r, s})
-//	if err != nil {
-//		return "", err
-//	}
-//	//signature := r.Bytes()
-//	//signature = append(signature, s.Bytes()...)
-//	fmt.Printf("Signature:" + b64(signature))
-//	return b64(signature), nil
-//}
-//func b64(data []byte) string {
-//	return base64.StdEncoding.EncodeToString(data)
-//}
-
-func checkSignature(signature string, pubkey *ecdsa.PublicKey, message string) (bool, error) {
+func checkSignature(signature string, pubkey string, message string) (bool, error) {
 	decodedSig, err := base64.StdEncoding.DecodeString(signature)
 	if err != nil {
 		return false, err
 	}
 	hash := sha256.Sum256([]byte(message))
-	sig := new(ECDSASignature)
-	err = gob.NewDecoder(bytes.NewReader(decodedSig)).Decode(&sig)
+	key, err := duckToPublicKey(pubkey)
 	if err != nil {
 		return false, err
 	}
-	//_, err = asn1.Unmarshal(decodedSig, &sig)
-	//if err != nil {
-	//	fmt.Println("asn unmarshal error", err)
-	//	return false, err
-	//}
-	//fmt.Println("verify got", ecdsa.Verify(pubkey, hash[:], sig.R, sig.S))
-	return ecdsa.Verify(pubkey, hash[:], sig.R, sig.S), nil
+	return ecdsa.VerifyASN1(key, hash[:], decodedSig), nil
 }
 
 func addBlockToChain(b Block) {
@@ -296,24 +217,6 @@ func truncateFile(name string, bytesToRemove int64) error {
 	}
 	return os.Truncate(name, fi.Size()-bytesToRemove)
 }
-
-// create handlers
-//func makeMuxRouter() http.Handler {
-//
-//
-//	return muxRouter
-//}
-
-//func makeHandlerReturningJsonVal(v) func(w http.ResponseWriter, r *http.Request) {
-//	return func(w http.ResponseWriter, r *http.Request) {
-//		bytes, err := json.MarshalIndent(v, "", "  ")
-//		if err != nil {
-//			http.Error(w, err.Error(), http.StatusInternalServerError)
-//			return
-//		}
-//		w.Write(bytes)
-//	}
-//}
 
 func handleGetBlocks(w http.ResponseWriter, r *http.Request) {
 	//bytes, err := json.MarshalIndent(Blockchain, "", "  ")
@@ -397,20 +300,15 @@ func isValid(newBlock, oldBlock Block) error {
 		return errors.New("Block is not a solution (does not have Difficulty zeros in hash)")
 	}
 	if newBlock.Tx.Amount > 0 {
-		b, err := base64.StdEncoding.DecodeString(newBlock.Tx.Sender)
-		if err != nil {
-			return errors.New("Sender is not a base64 string")
+		if duckToAddress(newBlock.Tx.PubKey) != newBlock.Tx.Sender {
+			return errors.New("Pubkey does not match sender address")
 		}
-		pubkey, err := x509.ParsePKIXPublicKey(b)
-		if err != nil {
-			return errors.New("Public key cannot be parsed")
-		}
-		key, ok := pubkey.(*ecdsa.PublicKey)
-		if !ok {
-			return errors.New("Public key is not of type *ecdsa.PublicKey")
-		}
-		if ok, _ = checkSignature(newBlock.Tx.Signature, key, newBlock.Hash); !ok {
-			return errors.New("Signature is not valid")
+		if ok, err := checkSignature(newBlock.Tx.Signature, newBlock.Tx.PubKey, newBlock.Hash); !ok {
+			if err != nil {
+				return err
+			} else {
+				return errors.New("Invalid signature")
+			}
 		}
 		if newBlock.Tx.Sender == newBlock.Solver {
 			if Balances[newBlock.Tx.Sender]+1 < newBlock.Tx.Amount { // plus 1 because that's the reward
@@ -424,6 +322,11 @@ func isValid(newBlock, oldBlock Block) error {
 	}
 	//checkSignature(newBlock.Tx.Signature)
 	return nil
+}
+
+func duckToAddress(duckkey string) string {
+	hash := sha256.Sum256([]byte(duckkey))
+	return base64.StdEncoding.EncodeToString(hash[:])
 }
 
 func calculateHash(block Block) string {
@@ -449,4 +352,20 @@ func isBlockSolution(hash string) bool {
 func toJson(v interface{}) string {
 	s, _ := json.MarshalIndent(v, "", "   ")
 	return string(s)
+}
+
+func duckToPublicKey(duckkey string) (*ecdsa.PublicKey, error) {
+	d, err := base64.StdEncoding.DecodeString(duckkey)
+	if err != nil {
+		return nil, err
+	}
+	p, err := x509.ParsePKIXPublicKey(d)
+	if err != nil {
+		return nil, err
+	}
+	pubkey, ok := p.(*ecdsa.PublicKey)
+	if !ok {
+		return nil, errors.New("pubkey is not of type *ecdsa.PublicKey")
+	}
+	return pubkey, nil
 }
