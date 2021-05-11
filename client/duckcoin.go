@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"math/big"
 	"net/http"
 	"os"
@@ -22,6 +23,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/fatih/color"
 )
 
 var (
@@ -34,6 +37,14 @@ var (
 	pubkeyFile  = configDir + "pubkey.pem"
 	privkeyFile = configDir + "privkey.pem"
 	Difficulty  = 5
+	helpMsg     = `Duckcoin - quack money
+Usage: duckcoin [<num of blocks>] [-t/--to <pubkey>] [-a/--amount <quacks>] [-m/--message <msg>]
+When run without arguments, Duckcoin mines Quacks to the key in ~/.config/duckcoin/pubkey.pem
+Examples:
+   duckcoin
+   duckcoin 4 # mines 4 blocks
+   duckcoin 3 -t MFkwEwY...335OxW8QuCQ5ryaA== -a 1 -m "Payment of 1 Quack to Ishan" # mines three blocks that pay 1 Quack
+`
 )
 
 type Block struct {
@@ -68,6 +79,46 @@ type Transaction struct {
 }
 
 func main() {
+	var err error
+	var numOfBlocks int64
+
+	amount := 0
+	receiver := ""
+	data := ""
+	numOfBlocks = math.MaxInt64
+
+	if ok, i := argsHaveOption("--to", "-t"); ok {
+		if len(os.Args) < i+2 {
+			fmt.Println("Too few arguments to --to")
+			return
+		}
+		receiver = os.Args[i+1]
+	}
+	if ok, i := argsHaveOption("--message", "-m"); ok {
+		if len(os.Args) < i+2 {
+			fmt.Println("Too few arguments to --message")
+			return
+		}
+		data = os.Args[i+1]
+	}
+	if ok, i := argsHaveOption("--amount", "-a"); ok {
+		if len(os.Args) < i+2 {
+			fmt.Println("Too few arguments to --amount")
+			return
+		}
+		amount, err = strconv.Atoi(os.Args[i+1])
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+	}
+	if len(os.Args) > 1 {
+		i, err := strconv.ParseInt(os.Args[1], 10, 64)
+		if err == nil {
+			numOfBlocks = i
+		}
+	}
+
 	os.MkdirAll(configDir, 0755)
 	solver, privkey, err := loadKeyPair(pubkeyFile, privkeyFile)
 	if err != nil {
@@ -87,12 +138,10 @@ func main() {
 	solverEncoded := b64(s)
 	s, _ = x509.MarshalPKCS8PrivateKey(privkey)
 	privkeyEncoded := b64(s)
-	fmt.Printf("Using these key pairs: \nPub: %s\nPriv:%s\n", solverEncoded, privkeyEncoded)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	for {
+	fmt.Printf("Using these key pairs: \nPub: %s\nPriv: %s\n", color.HiGreenString(solverEncoded), color.HiRedString(privkeyEncoded))
+
+	var i int64
+	for ; i < numOfBlocks; i++ {
 		r, err := http.Get(url + "/blocks/newest")
 		if err != nil {
 			fmt.Println(err)
@@ -100,10 +149,10 @@ func main() {
 		}
 		_ = json.NewDecoder(r.Body).Decode(&b)
 		_ = r.Body.Close()
-		b = makeBlock(privkey, b, "Mined by the official Duckcoin CLI User: "+username, solverEncoded, Transaction{"", solverEncoded, "", 0, ""})
+		b = makeBlock(privkey, b, "Mined by the official Duckcoin CLI User: "+username, solverEncoded, Transaction{data, solverEncoded, receiver, amount, ""})
 		j, jerr := json.Marshal(b)
 		if jerr != nil {
-			fmt.Println(err)
+			fmt.Println(jerr)
 			return
 		}
 		r, err = http.Post(url+"/blocks/new", "application/json", bytes.NewBuffer(j))
@@ -111,12 +160,13 @@ func main() {
 			fmt.Println(err)
 			return
 		}
-		resp, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		fmt.Println(string(resp))
+		r.Body.Close()
+		//resp, ierr := ioutil.ReadAll(r.Body)
+		//if ierr != nil {
+		//	fmt.Println(ierr)
+		//	return
+		//}
+		//fmt.Println(string(resp))
 	}
 }
 
@@ -132,6 +182,11 @@ func makeBlock(privkey *ecdsa.PrivateKey, oldBlock Block, data string, solver st
 	newBlock.PrevHash = oldBlock.Hash
 	newBlock.Solver = solver
 	newBlock.Tx = tx
+	if newBlock.Tx.Amount == 0 {
+		newBlock.Tx.Receiver = ""
+		newBlock.Tx.Sender = ""
+		newBlock.Tx.Signature = ""
+	}
 
 	for i := 0; ; i++ {
 		newBlock.Solution = strconv.Itoa(i)
@@ -142,12 +197,14 @@ func makeBlock(privkey *ecdsa.PrivateKey, oldBlock Block, data string, solver st
 			continue
 		} else {
 			newBlock.Hash = calculateHash(newBlock)
-			signature, err := makeSignature(privkey, newBlock.Hash)
-			if err != nil {
-				fmt.Println(err)
-				return Block{}
+			if newBlock.Tx.Amount != 0 {
+				signature, err := makeSignature(privkey, newBlock.Hash)
+				if err != nil {
+					fmt.Println(err)
+					return Block{}
+				}
+				newBlock.Tx.Signature = signature
 			}
-			newBlock.Tx.Signature = signature
 			fmt.Println(toJson(newBlock))
 			break
 		}
@@ -205,6 +262,9 @@ func saveKeyPair(pubkey *ecdsa.PublicKey, privkey *ecdsa.PrivateKey, pubfile str
 	if err := ioutil.WriteFile(pubfile, b, 0755); err != nil {
 		return err
 	}
+
+	color.HiYellow("Your keys have been saved to " + pubfile + " and " + privfile)
+	color.HiRedString("Do not tell anyone the contents of " + privfile)
 	return nil
 }
 
@@ -255,8 +315,8 @@ func makeSignature(privatekey *ecdsa.PrivateKey, message string) (string, error)
 	//}
 	//signature := r.Bytes()
 	//signature = append(signature, s.Bytes()...)
-	fmt.Printf("Signature:" + b64(b.Bytes()))
-	fmt.Printf("hash %v key %x", hash, privatekey.PublicKey)
+	//fmt.Printf("Signature:" + b64(b.Bytes()))
+	//fmt.Printf("hash %v key %x", hash, privatekey.PublicKey)
 	return b64(b.Bytes()), nil
 }
 
@@ -281,4 +341,13 @@ func isHashSolution(hash string) bool {
 func toJson(v interface{}) string {
 	s, _ := json.MarshalIndent(v, "", "   ")
 	return string(s)
+}
+
+func argsHaveOption(long string, short string) (hasOption bool, foundAt int) {
+	for i, arg := range os.Args {
+		if arg == "--"+long || arg == "-"+short {
+			return true, i
+		}
+	}
+	return false, 0
 }

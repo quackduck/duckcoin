@@ -125,6 +125,20 @@ func main() {
 	mux.HandleFunc("/difficulty", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(strconv.Itoa(Difficulty)))
 	}).Methods("GET")
+
+	go func() {
+		s := &http.Server{
+			Addr:           "0.0.0.0:80",
+			Handler:        mux,
+			ReadTimeout:    10 * time.Second,
+			WriteTimeout:   10 * time.Second,
+			MaxHeaderBytes: 1 << 20,
+		}
+		if err := s.ListenAndServe(); err != nil {
+			fmt.Println(err)
+			return
+		}
+	}()
 	httpPort := "8080"
 
 	fmt.Println("HTTP Server Listening on port:", httpPort)
@@ -139,6 +153,7 @@ func main() {
 		fmt.Println(err)
 		return
 	}
+
 }
 
 type ECDSASignature struct {
