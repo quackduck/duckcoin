@@ -41,7 +41,7 @@ When run without arguments, Duckcoin mines Quacks to the key in ~/.config/duckco
 Examples:
    duckcoin
    duckcoin 4 # mines 4 blocks
-   duckcoin 1 -t nSvl+K7RauJ5IagU+ID/slhDoR+435+NSLHOXzFBRmo= -a 3 -m "Payment of 1 Quack to Ishan"`
+   duckcoin 1 -t nSvl+K7RauJ5IagU+ID/slhDoR+435+NSLHOXzFBRmo= -a 3 -m "Payment of 3 Quacks to Ishan"`
 )
 
 type Block struct {
