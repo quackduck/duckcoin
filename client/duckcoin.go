@@ -151,9 +151,9 @@ func main() {
 
 	var i int64
 	//stopChan := make(chan struct{})
-	doneChan := make(chan interface{}, 1)
-	blockChan := make(chan Block, 1)
 	for ; i < numOfBlocks; i++ {
+		doneChan := make(chan interface{}, 1)
+		blockChan := make(chan Block, 1)
 		r, err := http.Get(url + "/blocks/newest")
 		if err != nil {
 			fmt.Println(err)
@@ -174,6 +174,7 @@ func main() {
 			select {
 			case <-doneChan:
 				//fmt.Println("Stopping mining")
+				//close(blockChan)
 				break Monitor
 			default:
 				c := time.After(time.Second)
@@ -237,6 +238,9 @@ Mine:
 	for i := 0; ; i++ {
 		select {
 		case b := <-blockChan:
+			//if b == *new(Block) {
+			//	break Mine
+			//}
 			if oldBlock != b {
 				oldBlock = b
 				//fmt.Println("Stopping mining")
@@ -447,9 +451,43 @@ func makeSignature(privkey string, message string) (string, error) {
 	return b64(data), nil
 }
 
+//type Block struct {
+//	// Index is the Block number in the Icoin Blockchain
+//	Index int64
+//	// Timestamp is the Unix timestamp of the date of creation of this Block
+//	Timestamp int64
+//	// Data stores any (arbitrary) additional data.
+//	Data string
+//	//Hash stores the hex value of the sha256 sum of the block represented as JSON with the indent as "   " and Hash as ""
+//	Hash string
+//	// PrevHash is the hash of the previous Block in the Blockchain
+//	PrevHash string
+//	// Solution is the nonce value that makes the Hash have a prefix of Difficulty zeros
+//	Solution string
+//	// Solver is the public key of the sender
+//	Solver string
+//	// Transaction is the transaction associated with this block
+//	Tx Transaction
+//}
+//
+//type Transaction struct {
+//	// Data is any (arbitrary) additional data.
+//	Data string
+//	//Sender is the address of the sender.
+//	Sender string
+//	//Receiver is the address of the receiver.
+//	Receiver string
+//	//Amount is the amount to be payed by the Sender to the Receiver. It is always a positive number.
+//	Amount int
+//	//PubKey is the Duckcoin formatted public key of the sender
+//	PubKey    string
+//	Signature string
+//}
+
 func calculateHash(block Block) string {
 	block.Hash = ""
 	block.Tx.Signature = ""
+	//s :=
 	return shasum([]byte(toJson(block)))
 }
 
