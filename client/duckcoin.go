@@ -87,6 +87,10 @@ func main() {
 	data := ""
 	numOfBlocks = math.MaxInt64
 
+	if os.Getenv("NAME") != "" {
+		username = os.Getenv("NAME")
+	}
+
 	if ok, _ := argsHaveOption("help", "h"); ok {
 		fmt.Println(helpMsg)
 		return
