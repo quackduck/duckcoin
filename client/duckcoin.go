@@ -192,12 +192,12 @@ func main() {
 					//i--
 					//break Monitor
 				}
-				fmt.Println("Monitor")
+				//fmt.Println("Monitor")
 				<-c
 				//time.Sleep(time.Second / 2)
 			}
 		}
-		fmt.Println("Next block")
+		//fmt.Println("Next block")
 		//resp, ierr := ioutil.ReadAll(r.Body)
 		//if ierr != nil {
 		//	fmt.Println(ierr)
@@ -243,14 +243,14 @@ Mine:
 			//}
 			if oldBlock != b {
 				oldBlock = b
-				//fmt.Println("Stopping mining")
+				fmt.Println("Restart, someone already mined block number " + strconv.FormatInt(newBlock.Index, 10))
 				goto Start
 			}
 		default:
 			newBlock.Solution = strconv.Itoa(i)
 			if !isHashSolution(calculateHash(newBlock)) {
-				if i%100000 == 0 {
-					fmt.Println(i)
+				if i%100000 == 0 && i != 0 {
+					fmt.Printf("Approx hashrate: %0.2f. Have checked %d hashes.\n", float64(i)/time.Since(t).Seconds(), i)
 				}
 				// fmt.Println(calculateHash(newBlock))
 				//time.Sleep(time.Second)
@@ -280,7 +280,7 @@ Mine:
 			}
 		}
 	}
-	fmt.Println("Stopping mining")
+	//fmt.Println("Stopping mining")
 	return
 }
 
