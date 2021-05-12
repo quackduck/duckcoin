@@ -26,8 +26,8 @@ import (
 )
 
 var (
-	b           Block
-	url         = "http://localhost:8080"
+	url = "http://devzat.hackclub.com:8080"
+	//url         = "http://localhost:8080"
 	home, _     = os.UserHomeDir()
 	u, _        = user.Current()
 	username    = u.Name
@@ -41,8 +41,7 @@ When run without arguments, Duckcoin mines Quacks to the key in ~/.config/duckco
 Examples:
    duckcoin
    duckcoin 4 # mines 4 blocks
-   duckcoin 3 -t  -a 1 -m "Payment of 1 Quack to Ishan" # mines three blocks that pay 1 Quack
-`
+   duckcoin 1 -t nSvl+K7RauJ5IagU+ID/slhDoR+435+NSLHOXzFBRmo= -a 3 -m "Payment of 1 Quack to Ishan"`
 )
 
 type Block struct {
@@ -81,11 +80,17 @@ type Transaction struct {
 func main() {
 	var err error
 	var numOfBlocks int64
+	var b Block
 
 	amount := 0
 	receiver := ""
 	data := ""
 	numOfBlocks = math.MaxInt64
+
+	if ok, _ := argsHaveOption("help", "h"); ok {
+		fmt.Println(helpMsg)
+		return
+	}
 
 	if ok, i := argsHaveOption("to", "t"); ok {
 		if len(os.Args) < i+2 {
@@ -125,7 +130,7 @@ func main() {
 	os.MkdirAll(configDir, 0755)
 	pubkey, privkey, err := loadKeyPair(pubkeyFile, privkeyFile)
 	if err != nil {
-		fmt.Println(err)
+		//fmt.Println(err)
 		pubkey, privkey, err = makeKeyPair()
 		if err != nil {
 			fmt.Println(err)
@@ -142,9 +147,12 @@ func main() {
 	//privkeyEncoded := privateKeytoduck(privkey)
 	solver := duckToAddress(pubkey)
 	//s, _ = x509.MarshalPKCS8PrivateKey(privkey)
-	fmt.Printf("Using these key pairs: \nPub: %s\nPriv: %s\nYour Address: %s\n", color.HiGreenString(pubkey), color.HiRedString(privkey), color.HiBlueString(solver))
+	fmt.Printf("Using this key pair: \nPub: %s\nPriv: %s\nYour Address: %s\n", color.HiGreenString(pubkey), color.HiRedString(privkey), color.HiBlueString(solver))
 
 	var i int64
+	//stopChan := make(chan struct{})
+	doneChan := make(chan interface{}, 1)
+	blockChan := make(chan Block, 1)
 	for ; i < numOfBlocks; i++ {
 		r, err := http.Get(url + "/blocks/newest")
 		if err != nil {
@@ -153,18 +161,42 @@ func main() {
 		}
 		_ = json.NewDecoder(r.Body).Decode(&b)
 		_ = r.Body.Close()
-		b = makeBlock(privkey, b, "Mined by the official Duckcoin CLI User: "+username, solver, Transaction{data, solver, receiver, amount, pubkey, ""})
-		j, jerr := json.Marshal(b)
-		if jerr != nil {
-			fmt.Println(jerr)
-			return
+		go func() {
+			makeBlock(blockChan, privkey, "Mined by the official Duckcoin CLI User: "+username, solver, Transaction{data, solver, receiver, amount, pubkey, ""})
+			blockChan <- b
+			doneChan <- true
+		}()
+
+		currBlock := b
+		//oldBlock := b
+	Monitor:
+		for {
+			select {
+			case <-doneChan:
+				//fmt.Println("Stopping mining")
+				break Monitor
+			default:
+				c := time.After(time.Second)
+				r, err := http.Get(url + "/blocks/newest")
+				if err != nil {
+					fmt.Println(err)
+					return
+				}
+				_ = json.NewDecoder(r.Body).Decode(&currBlock)
+				_ = r.Body.Close()
+				if currBlock != b {
+					//stopChan <- struct{}{}
+					blockChan <- currBlock
+					//fmt.Println("Going to next block")
+					//i--
+					//break Monitor
+				}
+				fmt.Println("Monitor")
+				<-c
+				//time.Sleep(time.Second / 2)
+			}
 		}
-		r, err = http.Post(url+"/blocks/new", "application/json", bytes.NewBuffer(j))
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		r.Body.Close()
+		fmt.Println("Next block")
 		//resp, ierr := ioutil.ReadAll(r.Body)
 		//if ierr != nil {
 		//	fmt.Println(ierr)
@@ -180,13 +212,17 @@ func duckToAddress(duckkey string) string {
 }
 
 // create a new block using previous block's hash
-func makeBlock(privkey string, oldBlock Block, data string, solver string, tx Transaction) Block {
+func makeBlock(blockChan chan Block, privkey string, data string, solver string, tx Transaction) {
+	oldBlock := <-blockChan
+
+Start:
+	//stopChan := make(chan bool)
 	var newBlock Block
 
 	t := time.Now()
 
 	newBlock.Index = oldBlock.Index + 1
-	newBlock.Timestamp = t.Unix()
+	newBlock.Timestamp = t.UnixNano()
 	newBlock.Data = data
 	newBlock.PrevHash = oldBlock.Hash
 	newBlock.Solver = solver
@@ -197,29 +233,51 @@ func makeBlock(privkey string, oldBlock Block, data string, solver string, tx Tr
 		newBlock.Tx.PubKey = ""
 		newBlock.Tx.Signature = ""
 	}
-
+Mine:
 	for i := 0; ; i++ {
-		newBlock.Solution = strconv.Itoa(i)
-		if !isHashSolution(calculateHash(newBlock)) {
-			// fmt.Println(calculateHash(newBlock))
-			//fmt.Println(calculateHash(newBlock))
-			//time.Sleep(time.Second)
-			continue
-		} else {
-			newBlock.Hash = calculateHash(newBlock)
-			if newBlock.Tx.Amount != 0 {
-				signature, err := makeSignature(privkey, newBlock.Hash)
+		select {
+		case b := <-blockChan:
+			if oldBlock != b {
+				oldBlock = b
+				//fmt.Println("Stopping mining")
+				goto Start
+			}
+		default:
+			newBlock.Solution = strconv.Itoa(i)
+			if !isHashSolution(calculateHash(newBlock)) {
+				if i%100000 == 0 {
+					fmt.Println(i)
+				}
+				// fmt.Println(calculateHash(newBlock))
+				//time.Sleep(time.Second)
+				continue
+			} else {
+				newBlock.Hash = calculateHash(newBlock)
+				if newBlock.Tx.Amount != 0 {
+					signature, err := makeSignature(privkey, newBlock.Hash)
+					if err != nil {
+						fmt.Println(err)
+						return
+					}
+					newBlock.Tx.Signature = signature
+				}
+				fmt.Println(toJson(newBlock))
+				j, jerr := json.Marshal(newBlock)
+				if jerr != nil {
+					fmt.Println(jerr)
+				}
+				r, err := http.Post(url+"/blocks/new", "application/json", bytes.NewBuffer(j))
 				if err != nil {
 					fmt.Println(err)
-					return Block{}
 				}
-				newBlock.Tx.Signature = signature
+				fmt.Println("Sent block to server")
+				r.Body.Close()
+				break Mine
 			}
-			fmt.Println(toJson(newBlock))
-			break
 		}
 	}
-	return newBlock
+	fmt.Println("Stopping mining")
+	return
 }
 
 //type ECDSASignature struct {
