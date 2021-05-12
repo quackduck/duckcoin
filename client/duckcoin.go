@@ -162,8 +162,8 @@ func main() {
 		_ = json.NewDecoder(r.Body).Decode(&b)
 		_ = r.Body.Close()
 		go func() {
-			makeBlock(blockChan, privkey, "Mined by the official Duckcoin CLI User: "+username, solver, Transaction{data, solver, receiver, amount, pubkey, ""})
 			blockChan <- b
+			makeBlock(blockChan, privkey, "Mined by the official Duckcoin CLI User: "+username, solver, Transaction{data, solver, receiver, amount, pubkey, ""})
 			doneChan <- true
 		}()
 
@@ -222,7 +222,7 @@ Start:
 	t := time.Now()
 
 	newBlock.Index = oldBlock.Index + 1
-	newBlock.Timestamp = t.UnixNano()
+	newBlock.Timestamp = t.UnixNano() / 1000
 	newBlock.Data = data
 	newBlock.PrevHash = oldBlock.Hash
 	newBlock.Solver = solver
