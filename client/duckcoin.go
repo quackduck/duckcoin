@@ -34,6 +34,7 @@ var (
 	configDir   = home + "/.config/duckcoin"
 	pubkeyFile  = configDir + "/pubkey.pem"
 	privkeyFile = configDir + "/privkey.pem"
+	urlFile     = configDir + "/url.txt"
 	Difficulty  = 5
 	helpMsg     = `Duckcoin - quack money
 Usage: duckcoin [<num of blocks>] [-t/--to <pubkey>] [-a/--amount <quacks>] [-m/--message <msg>]
@@ -86,6 +87,7 @@ func main() {
 	receiver := ""
 	data := ""
 	numOfBlocks = math.MaxInt64
+	//selfTransaction := false
 
 	if ok, _ := argsHaveOption("help", "h"); ok {
 		fmt.Println(helpMsg)
@@ -98,7 +100,6 @@ func main() {
 			return
 		}
 		receiver = os.Args[i+1]
-		//fmt.Println("Sending to", receiver)
 	}
 	if ok, i := argsHaveOption("message", "m"); ok {
 		if len(os.Args) < i+2 {
@@ -106,7 +107,6 @@ func main() {
 			return
 		}
 		data = os.Args[i+1]
-		//fmt.Println("With message", data)
 	}
 	if ok, i := argsHaveOption("amount", "a"); ok {
 		if len(os.Args) < i+2 {
@@ -118,8 +118,10 @@ func main() {
 			fmt.Println(err)
 			return
 		}
-		//fmt.Println("And amount", amount)
 	}
+	//if ok, i := argsHaveOption("self", "s"); ok {
+	//
+	//}
 	if len(os.Args) > 1 {
 		i, err := strconv.ParseInt(os.Args[1], 10, 64)
 		if err == nil {
@@ -142,12 +144,10 @@ func main() {
 			return
 		}
 	}
-	//s, _ := x509.MarshalPKIXPublicKey(solver)
-	//pubkeyEncoded := publicKeytoduck(pubkey)
-	//privkeyEncoded := privateKeytoduck(privkey)
 	solver := duckToAddress(pubkey)
-	//s, _ = x509.MarshalPKCS8PrivateKey(privkey)
 	fmt.Printf("Using this key pair: \nPub: %s\nPriv: %s\nYour Address: %s\n", color.HiGreenString(pubkey), color.HiRedString(privkey), color.HiBlueString(solver))
+
+	loadDifficultyAndUrl()
 
 	var i int64
 	//stopChan := make(chan struct{})
@@ -198,13 +198,24 @@ func main() {
 			}
 		}
 		//fmt.Println("Next block")
-		//resp, ierr := ioutil.ReadAll(r.Body)
-		//if ierr != nil {
-		//	fmt.Println(ierr)
-		//	return
-		//}
-		//fmt.Println(string(resp))
 	}
+}
+
+func loadDifficultyAndUrl() {
+	r, err := http.Get(url + "/difficulty")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	_ = json.NewDecoder(r.Body).Decode(&Difficulty)
+	_ = r.Body.Close()
+
+	data, err := ioutil.ReadFile(urlFile)
+	if err != nil {
+		ioutil.WriteFile(urlFile, []byte(url), 0644)
+		return
+	}
+	url = string(data)
 }
 
 func duckToAddress(duckkey string) string {
@@ -216,7 +227,7 @@ func duckToAddress(duckkey string) string {
 func makeBlock(blockChan chan Block, privkey string, data string, solver string, tx Transaction) {
 	oldBlock := <-blockChan
 
-Start:
+	//Start:
 	//stopChan := make(chan bool)
 	var newBlock Block
 
@@ -243,8 +254,8 @@ Mine:
 			//}
 			if oldBlock != b {
 				oldBlock = b
-				fmt.Println("Restart, someone already mined block number " + strconv.FormatInt(newBlock.Index, 10))
-				goto Start
+				//fmt.Println("Restart, someone already mined block number " + strconv.FormatInt(newBlock.Index, 10))
+				//goto Start
 			}
 		default:
 			newBlock.Solution = strconv.Itoa(i)
@@ -270,11 +281,17 @@ Mine:
 				if jerr != nil {
 					fmt.Println(jerr)
 				}
-				r, err := http.Post(url+"/blocks/new", "application/json", bytes.NewBuffer(j))
+				r, err := http.Post(url+"/blocks/new", "application/json", bytes.NewReader(j))
 				if err != nil {
 					fmt.Println(err)
 				}
 				fmt.Println("Sent block to server")
+				resp, ierr := ioutil.ReadAll(r.Body)
+				if ierr != nil {
+					fmt.Println(ierr)
+					return
+				}
+				fmt.Println("Server returned", color.HiGreenString(string(resp)))
 				r.Body.Close()
 				break Mine
 			}

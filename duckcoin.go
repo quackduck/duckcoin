@@ -269,7 +269,7 @@ func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Rejected block")
 		return
 	}
-	respondWithJSON(w, http.StatusCreated, b)
+	respondWithJSON(w, http.StatusCreated, "Block accepted.")
 }
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
@@ -294,7 +294,7 @@ func isValid(newBlock, oldBlock Block) error {
 		return errors.New("PrevHash should be " + oldBlock.Hash)
 	}
 	if calculateHash(newBlock) != newBlock.Hash {
-		return errors.New("Block Hash is incorrect")
+		return errors.New("Block Hash is incorrect. This usually happens if your Difficulty is set incorrectly. Restart your miner.")
 	}
 	if !isBlockSolution(newBlock.Hash) {
 		return errors.New("Block is not a solution (does not have Difficulty zeros in hash)")
