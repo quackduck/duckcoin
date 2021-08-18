@@ -27,7 +27,6 @@ import (
 
 var (
 	url = "http://devzat.hackclub.com:8080"
-	//url         = "http://localhost:8080"
 	home, _     = os.UserHomeDir()
 	u, _        = user.Current()
 	username    = u.Name
@@ -87,7 +86,6 @@ func main() {
 	receiver := ""
 	data := ""
 	numOfBlocks = math.MaxInt64
-	//selfTransaction := false
 
 	if ok, _ := argsHaveOption("help", "h"); ok {
 		fmt.Println(helpMsg)
@@ -119,9 +117,6 @@ func main() {
 			return
 		}
 	}
-	//if ok, i := argsHaveOption("self", "s"); ok {
-	//
-	//}
 	if len(os.Args) > 1 {
 		i, err := strconv.ParseInt(os.Args[1], 10, 64)
 		if err == nil {
@@ -150,7 +145,6 @@ func main() {
 	loadDifficultyAndUrl()
 
 	var i int64
-	//stopChan := make(chan struct{})
 	for ; i < numOfBlocks; i++ {
 		doneChan := make(chan interface{}, 1)
 		blockChan := make(chan Block, 1)
@@ -168,13 +162,10 @@ func main() {
 		}()
 
 		currBlock := b
-		//oldBlock := b
 	Monitor:
 		for {
 			select {
 			case <-doneChan:
-				//fmt.Println("Stopping mining")
-				//close(blockChan)
 				break Monitor
 			default:
 				c := time.After(time.Second)
@@ -186,18 +177,11 @@ func main() {
 				_ = json.NewDecoder(r.Body).Decode(&currBlock)
 				_ = r.Body.Close()
 				if currBlock != b {
-					//stopChan <- struct{}{}
 					blockChan <- currBlock
-					//fmt.Println("Going to next block")
-					//i--
-					//break Monitor
 				}
-				//fmt.Println("Monitor")
 				<-c
-				//time.Sleep(time.Second / 2)
 			}
 		}
-		//fmt.Println("Next block")
 	}
 }
 
@@ -227,8 +211,6 @@ func duckToAddress(duckkey string) string {
 func makeBlock(blockChan chan Block, privkey string, data string, solver string, tx Transaction) {
 	oldBlock := <-blockChan
 
-	//Start:
-	//stopChan := make(chan bool)
 	var newBlock Block
 
 	t := time.Now()
@@ -249,13 +231,8 @@ Mine:
 	for i := 0; ; i++ {
 		select {
 		case b := <-blockChan:
-			//if b == *new(Block) {
-			//	break Mine
-			//}
 			if oldBlock != b {
 				oldBlock = b
-				//fmt.Println("Restart, someone already mined block number " + strconv.FormatInt(newBlock.Index, 10))
-				//goto Start
 			}
 		default:
 			newBlock.Solution = strconv.Itoa(i)
@@ -263,8 +240,6 @@ Mine:
 				if i%100000 == 0 && i != 0 {
 					fmt.Printf("Approx hashrate: %0.2f. Have checked %d hashes.\n", float64(i)/time.Since(t).Seconds(), i)
 				}
-				// fmt.Println(calculateHash(newBlock))
-				//time.Sleep(time.Second)
 				continue
 			} else {
 				newBlock.Hash = calculateHash(newBlock)
@@ -297,39 +272,21 @@ Mine:
 			}
 		}
 	}
-	//fmt.Println("Stopping mining")
 	return
 }
-
-//type ECDSASignature struct {
-//	R, S *big.Int
-//}
 
 func b64(data []byte) string {
 	return base64.StdEncoding.EncodeToString(data)
 }
 
-//func keyEncode(v interface{}) string {
-//	marshalled, _ := x509.MarshalPKCS8PrivateKey(v)
-//	return b64(marshalled)
-//}
-
 func makeKeyPair() (pub string, priv string, err error) {
 	pubkeyCurve := elliptic.P256() // see http://golang.org/pkg/crypto/elliptic/#P256
-	//pubkeyCurve := elliptic.P256()
 	privkey, err := ecdsa.GenerateKey(pubkeyCurve, rand.Reader) // this generates a public & private key pair
 
 	if err != nil {
 		return "", "", err
 	}
 	pubkey := &privkey.PublicKey
-	//fmt.Println("Private Key:")
-	//marshalled, _ := x509.MarshalPKCS8PrivateKey(privatekey)
-	//fmt.Println(b64(marshalled))
-
-	//fmt.Println("Public Key:")
-	//marshalled, _ = x509.MarshalPKIXPublicKey(pubkey)
-	//fmt.Println(b64(marshalled))
 	pub, err = publicKeytoduck(pubkey)
 	if err != nil {
 		return "", "", err
@@ -341,23 +298,6 @@ func makeKeyPair() (pub string, priv string, err error) {
 	return pub, priv, nil
 }
 
-//// duckToPublicKey returns a deserialized base64 encoded public key
-//func duckToPublicKey(duckkey string) (*ecdsa.PublicKey, error) {
-//	d, err := base64.StdEncoding.DecodeString(duckkey)
-//	if err != nil {
-//		return nil, err
-//	}
-//	p, err := x509.ParsePKIXPublicKey(d)
-//	if err != nil {
-//		return nil, err
-//	}
-//	pubkey, ok := p.(*ecdsa.PublicKey)
-//	if !ok {
-//		return nil, errors.New("pubkey is not of type *ecdsa.PublicKey")
-//	}
-//	return pubkey, nil
-//}
-
 // duckToPrivateKey returns a deserialized base64 encoded private key
 func duckToPrivateKey(duckkey string) (*ecdsa.PrivateKey, error) {
 	d, err := base64.StdEncoding.DecodeString(duckkey)
@@ -368,10 +308,6 @@ func duckToPrivateKey(duckkey string) (*ecdsa.PrivateKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	//privkey, ok := p.(*ecdsa.PrivateKey)
-	//if !ok {
-	//	return nil, errors.New("pubkey is not of type *ecdsa.PublicKey")
-	//}
 	return p, nil
 }
 
@@ -452,59 +388,12 @@ func makeSignature(privkey string, message string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	//b := new(bytes.Buffer)
-	//err = gob.NewEncoder(b).Encode(ECDSASignature{r, s})
-	//if err != nil {
-	//	return "", err
-	//}
-	//signature, err := asn1.Marshal(ECDSASignature{r, s})
-	//if err != nil {
-	//	return "", err
-	//}
-	//signature := r.Bytes()
-	//signature = append(signature, s.Bytes()...)
-	//fmt.Printf("Signature:" + b64(b.Bytes()))
-	//fmt.Printf("hash %v key %x", hash, privatekey.PublicKey)
 	return b64(data), nil
 }
-
-//type Block struct {
-//	// Index is the Block number in the Icoin Blockchain
-//	Index int64
-//	// Timestamp is the Unix timestamp of the date of creation of this Block
-//	Timestamp int64
-//	// Data stores any (arbitrary) additional data.
-//	Data string
-//	//Hash stores the hex value of the sha256 sum of the block represented as JSON with the indent as "   " and Hash as ""
-//	Hash string
-//	// PrevHash is the hash of the previous Block in the Blockchain
-//	PrevHash string
-//	// Solution is the nonce value that makes the Hash have a prefix of Difficulty zeros
-//	Solution string
-//	// Solver is the public key of the sender
-//	Solver string
-//	// Transaction is the transaction associated with this block
-//	Tx Transaction
-//}
-//
-//type Transaction struct {
-//	// Data is any (arbitrary) additional data.
-//	Data string
-//	//Sender is the address of the sender.
-//	Sender string
-//	//Receiver is the address of the receiver.
-//	Receiver string
-//	//Amount is the amount to be payed by the Sender to the Receiver. It is always a positive number.
-//	Amount int
-//	//PubKey is the Duckcoin formatted public key of the sender
-//	PubKey    string
-//	Signature string
-//}
 
 func calculateHash(block Block) string {
 	block.Hash = ""
 	block.Tx.Signature = ""
-	//s :=
 	return shasum([]byte(toJson(block)))
 }
 
