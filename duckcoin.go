@@ -219,11 +219,6 @@ func truncateFile(name string, bytesToRemove int64) error {
 }
 
 func handleGetBlocks(w http.ResponseWriter, r *http.Request) {
-	//bytes, err := json.MarshalIndent(Blockchain, "", "  ")
-	//if err != nil {
-	//	http.Error(w, err.Error(), http.StatusInternalServerError)
-	//	return
-	//}
 	f, err := os.Open(BlockchainFile)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -231,7 +226,6 @@ func handleGetBlocks(w http.ResponseWriter, r *http.Request) {
 	}
 	io.Copy(w, f)
 	f.Close()
-	//w.Write(bytes)
 }
 func handleGetBalances(w http.ResponseWriter, r *http.Request) {
 	bytes, err := json.MarshalIndent(Balances, "", "  ")
@@ -320,7 +314,6 @@ func isValid(newBlock, oldBlock Block) error {
 			}
 		}
 	}
-	//checkSignature(newBlock.Tx.Signature)
 	return nil
 }
 
@@ -332,9 +325,7 @@ func duckToAddress(duckkey string) string {
 func calculateHash(block Block) string {
 	block.Hash = ""
 	block.Tx.Signature = ""
-	return shasum([]byte(toJson(block)))
-	//return shasum([]byte(strconv.FormatInt(block.Index, 10) + strconv.FormatInt(block.Timestamp, 10) + block.Data + block.PrevHash + block.Solution + block.Solver))
-}
+	return shasum([]byte(toJson(block)))}
 
 func shasum(record []byte) string {
 	h := sha256.New()
