@@ -325,7 +325,8 @@ func duckToAddress(duckkey string) string {
 func calculateHash(block Block) string {
 	block.Hash = ""
 	block.Tx.Signature = ""
-	return shasum([]byte(toJson(block)))}
+	return shasum([]byte(toJson(block)))
+}
 
 func shasum(record []byte) string {
 	h := sha256.New()
