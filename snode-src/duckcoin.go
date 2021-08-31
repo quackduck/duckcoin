@@ -192,7 +192,7 @@ func mine(numOfBlocks int, data string, receiver string, amount int) {
 				_ = r.Body.Close()
 				if currBlock != b {
 					if currBlock.Solver != address {
-						fmt.Println("Gotta restart, someone else got block", currBlock.Index)
+						fmt.Println(color.HiYellowString("Gotta restart, someone else got block " + strconv.Itoa(int(currBlock.Index))))
 						b = currBlock
 						blockChan <- currBlock
 					}
