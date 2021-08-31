@@ -26,7 +26,7 @@ import (
 )
 
 var (
-	url = "http://devzat.hackclub.com:8080"
+	url         = "http://devzat.hackclub.com:8080"
 	home, _     = os.UserHomeDir()
 	u, _        = user.Current()
 	username    = u.Name
@@ -35,8 +35,8 @@ var (
 	privkeyFile = configDir + "/privkey.pem"
 	urlFile     = configDir + "/url.txt"
 	// Difficulty is how many zeros are needed in front of a block hash to be considered a valid block. Thus, this controls how much work miners have to do.
-	Difficulty  = 5
-	helpMsg     = `Duckcoin - quack money
+	Difficulty = 5
+	helpMsg    = `Duckcoin - quack money
 Usage: duckcoin [<num of blocks>] [-t/--to <pubkey>] [-a/--amount <quacks>] [-m/--message <msg>]
 When run without arguments, Duckcoin mines Quacks to the key in ~/.config/duckcoin/pubkey.pem
 Examples:
@@ -44,11 +44,11 @@ Examples:
    duckcoin 4 # mines 4 blocks
    duckcoin 1 -t nSvl+K7RauJ5IagU+ID/slhDoR+435+NSLHOXzFBRmo= -a 3 -m "Payment of 3 Quacks to Ishan"`
 
-	amount int
-	receiver string
-	address string
-	data string
-	numOfBlocks = math.MaxInt64
+	amount          int
+	receiver        string
+	address         string
+	data            string
+	numOfBlocks     = math.MaxInt64
 	pubkey, privkey string
 )
 
@@ -182,7 +182,7 @@ func mine(numOfBlocks int, data string, receiver string, amount int) {
 			case <-doneChan:
 				break Monitor
 			default:
-				c := time.After(time.Second)
+				c := time.After(time.Second / 2)
 				r, err := http.Get(url + "/blocks/newest")
 				if err != nil {
 					fmt.Println(err)
@@ -191,7 +191,11 @@ func mine(numOfBlocks int, data string, receiver string, amount int) {
 				_ = json.NewDecoder(r.Body).Decode(&currBlock)
 				_ = r.Body.Close()
 				if currBlock != b {
-					blockChan <- currBlock
+					if currBlock.Solver != address {
+						fmt.Println("Gotta restart, someone else got block", currBlock.Index)
+						b = currBlock
+						blockChan <- currBlock
+					}
 				}
 				<-c
 			}
@@ -228,7 +232,7 @@ func makeBlock(blockChan chan Block, privkey string, data string, solver string,
 	var newBlock Block
 
 	t := time.Now()
-
+Start:
 	newBlock.Index = oldBlock.Index + 1
 	newBlock.Timestamp = t.UnixNano() / 1000
 	newBlock.Data = data
@@ -247,11 +251,12 @@ Mine:
 		case b := <-blockChan:
 			if oldBlock != b {
 				oldBlock = b
+				goto Start
 			}
 		default:
 			newBlock.Solution = strconv.Itoa(i)
 			if !isHashSolution(calculateHash(newBlock)) {
-				if i%100000 == 0 && i != 0 {
+				if i&(1<<17-1) == 0 && i != 0 { // optimize to check every 131072 iterations (bitwise ops are faster)
 					fmt.Printf("Approx hashrate: %0.2f. Have checked %d hashes.\n", float64(i)/time.Since(t).Seconds(), i)
 				}
 				continue
@@ -294,7 +299,7 @@ func b64(data []byte) string {
 }
 
 func makeKeyPair() (pub string, priv string, err error) {
-	pubkeyCurve := elliptic.P256() // see http://golang.org/pkg/crypto/elliptic/#P256
+	pubkeyCurve := elliptic.P256()                              // see http://golang.org/pkg/crypto/elliptic/#P256
 	privkey, err := ecdsa.GenerateKey(pubkeyCurve, rand.Reader) // this generates a public & private key pair
 
 	if err != nil {
