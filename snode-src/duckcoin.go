@@ -43,6 +43,13 @@ Examples:
    duckcoin
    duckcoin 4 # mines 4 blocks
    duckcoin 1 -t nSvl+K7RauJ5IagU+ID/slhDoR+435+NSLHOXzFBRmo= -a 3 -m "Payment of 3 Quacks to Ishan"`
+
+	amount int
+	receiver string
+	address string
+	data string
+	numOfBlocks = math.MaxInt64
+	pubkey, privkey string
 )
 
 // A Block is a data structure that represents a validated set of transactions with proof of work, which makes it really hard to rewrite the blockchain.
@@ -82,19 +89,11 @@ type Transaction struct {
 
 func main() {
 	var err error
-	var numOfBlocks int64
-	var b Block
-
-	amount := 0
-	receiver := ""
-	data := ""
-	numOfBlocks = math.MaxInt64
 
 	if ok, _ := argsHaveOption("help", "h"); ok {
 		fmt.Println(helpMsg)
 		return
 	}
-
 	if ok, i := argsHaveOption("to", "t"); ok {
 		if len(os.Args) < i+2 {
 			fmt.Println("Too few arguments to --to")
@@ -121,16 +120,23 @@ func main() {
 		}
 	}
 	if len(os.Args) > 1 {
-		i, err := strconv.ParseInt(os.Args[1], 10, 64)
+		i, err := strconv.Atoi(os.Args[1])
 		if err == nil {
 			numOfBlocks = i
+		} else {
+			fmt.Println(err)
+			return
 		}
 	}
 
-	os.MkdirAll(configDir, 0755)
-	pubkey, privkey, err := loadKeyPair(pubkeyFile, privkeyFile)
+	err = os.MkdirAll(configDir, 0700)
 	if err != nil {
-		//fmt.Println(err)
+		fmt.Println(err)
+		return
+	}
+	pubkey, privkey, err = loadKeyPair(pubkeyFile, privkeyFile)
+	if err != nil {
+		fmt.Println("Making you a fresh, new key pair and address!")
 		pubkey, privkey, err = makeKeyPair()
 		if err != nil {
 			fmt.Println(err)
@@ -142,12 +148,17 @@ func main() {
 			return
 		}
 	}
-	solver := duckToAddress(pubkey)
-	fmt.Printf("Using this key pair: \nPub: %s\nPriv: %s\nYour Address: %s\n", color.HiGreenString(pubkey), color.HiRedString(privkey), color.HiBlueString(solver))
+	address = duckToAddress(pubkey)
+	fmt.Printf("Mining to this address: %s\n", color.HiBlueString(address))
 
 	loadDifficultyAndURL()
 
-	var i int64
+	mine(numOfBlocks, data, receiver, amount)
+}
+
+func mine(numOfBlocks int, data string, receiver string, amount int) {
+	var i int
+	var b Block
 	for ; i < numOfBlocks; i++ {
 		doneChan := make(chan interface{}, 1)
 		blockChan := make(chan Block, 1)
@@ -160,7 +171,7 @@ func main() {
 		_ = r.Body.Close()
 		go func() {
 			blockChan <- b
-			makeBlock(blockChan, privkey, "Mined by the official Duckcoin CLI User: "+username, solver, Transaction{data, solver, receiver, amount, pubkey, ""})
+			makeBlock(blockChan, privkey, "Mined by the official Duckcoin CLI User: "+username, address, Transaction{data, address, receiver, amount, pubkey, ""})
 			doneChan <- true
 		}()
 
@@ -339,7 +350,7 @@ func saveKeyPair(pubkey string, privkey string, pubfile string, privfile string)
 		Type:  "DUCKCOIN (ECDSA) PRIVATE KEY",
 		Bytes: d,
 	})
-	if err := ioutil.WriteFile(privfile, b, 0755); err != nil {
+	if err := ioutil.WriteFile(privfile, b, 0600); err != nil {
 		return err
 	}
 
@@ -348,12 +359,12 @@ func saveKeyPair(pubkey string, privkey string, pubfile string, privfile string)
 		Type:  "DUCKCOIN (ECDSA) PUBLIC KEY",
 		Bytes: d,
 	})
-	if err := ioutil.WriteFile(pubfile, b, 0755); err != nil {
+	if err := ioutil.WriteFile(pubfile, b, 0644); err != nil {
 		return err
 	}
 
-	color.HiYellow("Your keys have been saved to " + pubfile + " and " + privfile)
-	color.HiRed("Do not tell anyone the contents of " + privfile)
+	color.HiYellow("Your keys have been saved to " + pubfile + "(pubkey) and " + privfile + " (privkey)")
+	color.HiRed("Do not tell anyone what's inside " + privfile)
 	return nil
 }
 
