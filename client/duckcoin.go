@@ -45,7 +45,7 @@ Examples:
    duckcoin 1 -t nSvl+K7RauJ5IagU+ID/slhDoR+435+NSLHOXzFBRmo= -a 3 -m "Payment of 3 Quacks to Ishan"`
 )
 
-// A Block is a data structure that represents a block in the blockchain.
+// A Block is a data structure that represents a validated set of transactions with proof of work, which makes it really hard to rewrite the blockchain.
 type Block struct {
 	// Index is the Block number in the Icoin Blockchain
 	Index int64
