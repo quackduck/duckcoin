@@ -34,7 +34,7 @@ var (
 	pubkeyFile  = configDir + "/pubkey.pem"
 	privkeyFile = configDir + "/privkey.pem"
 	urlFile     = configDir + "/url.txt"
-	// Difficulty is how hard it is to mine
+	// Difficulty is how many zeros are needed in front of a block hash to be considered a valid block. Thus, this controls how much work miners have to do.
 	Difficulty  = 5
 	helpMsg     = `Duckcoin - quack money
 Usage: duckcoin [<num of blocks>] [-t/--to <pubkey>] [-a/--amount <quacks>] [-m/--message <msg>]
