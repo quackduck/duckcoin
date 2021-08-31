@@ -261,6 +261,7 @@ Mine:
 				}
 				continue
 			} else {
+				fmt.Println("\nBlock made! It took", time.Since(t).Round(time.Second/100))
 				newBlock.Hash = calculateHash(newBlock)
 				if newBlock.Tx.Amount != 0 {
 					signature, err := makeSignature(privkey, newBlock.Hash)
@@ -270,7 +271,7 @@ Mine:
 					}
 					newBlock.Tx.Signature = signature
 				}
-				fmt.Println(toJson(newBlock))
+				fmt.Println(color.HiYellowString(toJson(newBlock)))
 				j, jerr := json.Marshal(newBlock)
 				if jerr != nil {
 					fmt.Println(jerr)
