@@ -1,0 +1,23 @@
+[~/downloads]  echo DUCK | aces -d ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/ | aces ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/
+DUCK
+[~/downloads]  echo DUCK | aces -d ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/ | hexdump
+0000000 0d 40 8a
+0000003
+[~/downloads]  echo DUCK | aces -d ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/ | base64
+DUCK
+[~/downloads]  echo DUCK | aces -d ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/ | base64 | base64 -d
+@�⏎
+[~/downloads]  echo DUCK | aces -d ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/ | base64 | base64 -d | hexdump
+0000000 0d 40 8a
+0000003
+[~/downloads]  echo DUCKCOIN | aces -d ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/ | base64 | base64 -d | hexdump
+0000000 0d 40 8a 08 e2 0d
+0000006
+[~/downloads]  echo DUCKCOIN | aces -d ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/ | base64 | base64 -d
+[~/downloads]  echo DUCKCOIN | aces -d ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/ | base64
+DUCKCOIN
+[~/downloads]  echo DUCKCOINduckcoin | aces -d ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/ | base64
+DUCKCOINduckcoin
+[~/downloads]  echo DUCKCOINduckcoin | aces -d ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/ | base64 | base64 -d | hexdump
+0000000 0d 40 8a 08 e2 0d 76 e7 24 72 88 a7
+000000c
