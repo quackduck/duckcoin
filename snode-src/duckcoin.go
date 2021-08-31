@@ -34,6 +34,7 @@ var (
 	pubkeyFile  = configDir + "/pubkey.pem"
 	privkeyFile = configDir + "/privkey.pem"
 	urlFile     = configDir + "/url.txt"
+	// Difficulty is how many zeros are needed in front of a block hash to be considered a valid block. Thus, this controls how much work miners have to do.
 	Difficulty  = 5
 	helpMsg     = `Duckcoin - quack money
 Usage: duckcoin [<num of blocks>] [-t/--to <pubkey>] [-a/--amount <quacks>] [-m/--message <msg>]
@@ -51,6 +52,7 @@ Examples:
 	pubkey, privkey string
 )
 
+// A Block is a data structure that represents a validated set of transactions with proof of work, which makes it really hard to rewrite the blockchain.
 type Block struct {
 	// Index is the Block number in the Icoin Blockchain
 	Index int64
@@ -70,6 +72,7 @@ type Block struct {
 	Tx Transaction
 }
 
+// A Transaction is a transfer of any amount of duckcoins from one address to another.
 type Transaction struct {
 	// Data is any (arbitrary) additional data.
 	Data string
@@ -148,7 +151,7 @@ func main() {
 	address = duckToAddress(pubkey)
 	fmt.Printf("Mining to this address: %s\n", color.HiBlueString(address))
 
-	loadDifficultyAndUrl()
+	loadDifficultyAndURL()
 
 	mine(numOfBlocks, data, receiver, amount)
 }
@@ -196,7 +199,7 @@ func mine(numOfBlocks int, data string, receiver string, amount int) {
 	}
 }
 
-func loadDifficultyAndUrl() {
+func loadDifficultyAndURL() {
 	r, err := http.Get(url + "/difficulty")
 	if err != nil {
 		fmt.Println(err)
