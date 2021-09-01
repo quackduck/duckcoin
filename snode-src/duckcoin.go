@@ -204,6 +204,13 @@ func mine(numOfBlocks int, data string, receiver string, amount int) {
 }
 
 func loadDifficultyAndURL() {
+	data, err := ioutil.ReadFile(urlFile)
+	if err != nil {
+		ioutil.WriteFile(urlFile, []byte(url), 0644)
+		return
+	}
+	url = strings.TrimSpace(string(data))
+
 	r, err := http.Get(url + "/difficulty")
 	if err != nil {
 		fmt.Println(err)
@@ -211,13 +218,6 @@ func loadDifficultyAndURL() {
 	}
 	_ = json.NewDecoder(r.Body).Decode(&Difficulty)
 	_ = r.Body.Close()
-
-	data, err := ioutil.ReadFile(urlFile)
-	if err != nil {
-		ioutil.WriteFile(urlFile, []byte(url), 0644)
-		return
-	}
-	url = string(data)
 }
 
 func duckToAddress(duckkey string) string {
