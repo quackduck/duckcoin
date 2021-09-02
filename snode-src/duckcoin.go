@@ -34,7 +34,7 @@ var (
 	pubkeyFile  = configDir + "/pubkey.pem"
 	privkeyFile = configDir + "/privkey.pem"
 	urlFile     = configDir + "/url.txt"
-	// Difficulty is how many zeros are needed in front of a block hash to be considered a valid block. Thus, this controls how much work miners have to do.
+	// Difficulty is how many zeros are needed in front of a block hash to be consideBrightRed a valid block. Thus, this controls how much work miners have to do.
 	Difficulty = 5
 	helpMsg    = `Duckcoin - quack money
 Usage: duckcoin [<num of blocks>] [-t/--to <pubkey>] [-a/--amount <quacks>] [-m/--message <msg>]
@@ -149,7 +149,7 @@ func main() {
 		}
 	}
 	address = duckToAddress(pubkey)
-	fmt.Printf("Mining to this address: %s\n", gchalk.Blue(address))
+	fmt.Printf("Mining to this address: %s\n", gchalk.BrightBlue(address))
 
 	loadDifficultyAndURL()
 
@@ -271,7 +271,7 @@ Mine:
 					}
 					newBlock.Tx.Signature = signature
 				}
-				fmt.Println(gchalk.Yellow(toJson(newBlock)))
+				fmt.Println(gchalk.BrightYellow(toJson(newBlock)))
 				j, jerr := json.Marshal(newBlock)
 				if jerr != nil {
 					fmt.Println(jerr)
@@ -287,7 +287,7 @@ Mine:
 					fmt.Println(ierr)
 					return
 				}
-				fmt.Println("Server returned", gchalk.Green(string(resp)))
+				fmt.Println("Server returned", gchalk.BrightGreen(string(resp)))
 				r.Body.Close()
 				break Mine
 			}
@@ -370,8 +370,8 @@ func saveKeyPair(pubkey string, privkey string, pubfile string, privfile string)
 		return err
 	}
 
-	gchalk.Yellow("Your keys have been saved to " + pubfile + "(pubkey) and " + privfile + " (privkey)")
-	gchalk.Red("Do not tell anyone what's inside " + privfile)
+	gchalk.BrightYellow("Your keys have been saved to " + pubfile + "(pubkey) and " + privfile + " (privkey)")
+	gchalk.BrightRed("Do not tell anyone what's inside " + privfile)
 	return nil
 }
 
@@ -395,7 +395,7 @@ func loadKeyPair(pubfile string, privfile string) (pub string, priv string, err 
 		return "", "", errors.New("could not decode PEM data from " + privfile)
 	}
 	privkey := base64.StdEncoding.EncodeToString(key.Bytes)
-	gchalk.Yellow("Loaded keys from " + pubfile + " and " + privfile)
+	gchalk.BrightYellow("Loaded keys from " + pubfile + " and " + privfile)
 	return pubkey, privkey, nil
 }
 
@@ -431,7 +431,7 @@ func isHashSolution(hash string) bool {
 }
 
 func toJson(v interface{}) string {
-	s, _ := json.MarshalIndent(v, "", "   ")
+	s, _ := json.MarshalIndent(v, "", "   ")·
 	return string(s)
 }
 
