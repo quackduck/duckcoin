@@ -279,6 +279,7 @@ Mine:
 				r, err := http.Post(url+"/blocks/new", "application/json", bytes.NewReader(j))
 				if err != nil {
 					fmt.Println(err)
+					return
 				}
 				fmt.Println("Sent block to server")
 				resp, ierr := ioutil.ReadAll(r.Body)
@@ -286,7 +287,7 @@ Mine:
 					fmt.Println(ierr)
 					return
 				}
-				fmt.Println("Server returned", color.HiGreenString(string(resp)))
+				fmt.Println("Server returned", color.HiGreenString(string(resp))+"\n")
 				r.Body.Close()
 				break Mine
 			}
