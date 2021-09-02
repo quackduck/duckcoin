@@ -431,7 +431,7 @@ func isHashSolution(hash string) bool {
 }
 
 func toJson(v interface{}) string {
-	s, _ := json.MarshalIndent(v, "", "   ")·
+	s, _ := json.MarshalIndent(v, "", "   ")
 	return string(s)
 }
 
