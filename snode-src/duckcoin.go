@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fatih/color"
+	"github.com/jwalton/gchalk"
 )
 
 var (
@@ -149,7 +149,7 @@ func main() {
 		}
 	}
 	address = duckToAddress(pubkey)
-	fmt.Printf("Mining to this address: %s\n", color.HiBlueString(address))
+	fmt.Printf("Mining to this address: %s\n", gchalk.Blue(address))
 
 	loadDifficultyAndURL()
 
@@ -192,7 +192,7 @@ func mine(numOfBlocks int, data string, receiver string, amount int) {
 				_ = r.Body.Close()
 				if currBlock != b {
 					if currBlock.Solver != address {
-						fmt.Println(color.HiYellowString("Gotta restart, someone else got block " + strconv.Itoa(int(currBlock.Index))))
+						fmt.Println(gchalk.RGB(255, 165, 0)("Gotta restart, someone else got block " + strconv.Itoa(int(currBlock.Index))))
 						b = currBlock
 						blockChan <- currBlock
 					}
@@ -271,7 +271,7 @@ Mine:
 					}
 					newBlock.Tx.Signature = signature
 				}
-				fmt.Println(color.HiYellowString(toJson(newBlock)))
+				fmt.Println(gchalk.Yellow(toJson(newBlock)))
 				j, jerr := json.Marshal(newBlock)
 				if jerr != nil {
 					fmt.Println(jerr)
@@ -286,7 +286,7 @@ Mine:
 					fmt.Println(ierr)
 					return
 				}
-				fmt.Println("Server returned", color.HiGreenString(string(resp)))
+				fmt.Println("Server returned", gchalk.Green(string(resp)))
 				r.Body.Close()
 				break Mine
 			}
@@ -369,8 +369,8 @@ func saveKeyPair(pubkey string, privkey string, pubfile string, privfile string)
 		return err
 	}
 
-	color.HiYellow("Your keys have been saved to " + pubfile + "(pubkey) and " + privfile + " (privkey)")
-	color.HiRed("Do not tell anyone what's inside " + privfile)
+	gchalk.Yellow("Your keys have been saved to " + pubfile + "(pubkey) and " + privfile + " (privkey)")
+	gchalk.Red("Do not tell anyone what's inside " + privfile)
 	return nil
 }
 
@@ -394,7 +394,7 @@ func loadKeyPair(pubfile string, privfile string) (pub string, priv string, err 
 		return "", "", errors.New("could not decode PEM data from " + privfile)
 	}
 	privkey := base64.StdEncoding.EncodeToString(key.Bytes)
-	color.HiYellow("Loaded keys from " + pubfile + " and " + privfile)
+	gchalk.Yellow("Loaded keys from " + pubfile + " and " + privfile)
 	return pubkey, privkey, nil
 }
 
