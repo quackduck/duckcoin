@@ -279,6 +279,7 @@ Mine:
 				r, err := http.Post(url+"/blocks/new", "application/json", bytes.NewReader(j))
 				if err != nil {
 					fmt.Println(err)
+					return
 				}
 				fmt.Println("Sent block to server")
 				resp, ierr := ioutil.ReadAll(r.Body)
