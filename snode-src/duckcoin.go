@@ -271,7 +271,7 @@ Mine:
 					}
 					newBlock.Tx.Signature = signature
 				}
-				fmt.Println(gchalk.BrightYellow(toJson(newBlock)))
+				fmt.Println(gchalk.BrightYellow(toJSON(newBlock)))
 				j, jerr := json.Marshal(newBlock)
 				if jerr != nil {
 					fmt.Println(jerr)
@@ -415,7 +415,7 @@ func makeSignature(privkey string, message string) (string, error) {
 func calculateHash(block Block) string {
 	block.Hash = ""
 	block.Tx.Signature = ""
-	return shasum([]byte(toJson(block)))
+	return shasum([]byte(toJSON(block)))
 }
 
 func shasum(record []byte) string {
@@ -430,7 +430,7 @@ func isHashSolution(hash string) bool {
 	return strings.HasPrefix(hash, prefix)
 }
 
-func toJson(v interface{}) string {
+func toJSON(v interface{}) string {
 	s, _ := json.MarshalIndent(v, "", "   ")
 	return string(s)
 }
