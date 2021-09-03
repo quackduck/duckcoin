@@ -87,6 +87,7 @@ type Transaction struct {
 	Signature string
 }
 
+// main is the main entry point of the program.
 func main() {
 	var err error
 
@@ -156,6 +157,7 @@ func main() {
 	mine(numOfBlocks, data, receiver, amount)
 }
 
+// mine mines a given number of blocks with the given data, receiver, and amount.
 func mine(numOfBlocks int, data string, receiver string, amount int) {
 	var i int
 	var b Block
@@ -203,6 +205,7 @@ func mine(numOfBlocks int, data string, receiver string, amount int) {
 	}
 }
 
+// loadDifficultyAndURL loads the URL from the config file, and then loads the difficulty from that.
 func loadDifficultyAndURL() {
 	data, err := ioutil.ReadFile(urlFile)
 	if err != nil {
@@ -220,12 +223,13 @@ func loadDifficultyAndURL() {
 	_ = r.Body.Close()
 }
 
+// duckToAddress converts a Duckcoin public key to a Duckcoin address.
 func duckToAddress(duckkey string) string {
 	hash := sha256.Sum256([]byte(duckkey))
 	return b64(hash[:])
 }
 
-// create a new block using previous block's hash
+// makeBlock creates a new block using previous block's hash
 func makeBlock(blockChan chan Block, privkey string, data string, solver string, tx Transaction) {
 	oldBlock := <-blockChan
 
@@ -296,10 +300,12 @@ Mine:
 	return
 }
 
+// b64 encodes a byte array to a base64 string
 func b64(data []byte) string {
 	return base64.StdEncoding.EncodeToString(data)
 }
 
+// makeKeyPair generates a new keypair for use as an address
 func makeKeyPair() (pub string, priv string, err error) {
 	pubkeyCurve := elliptic.P256()                              // see http://golang.org/pkg/crypto/elliptic/#P256
 	privkey, err := ecdsa.GenerateKey(pubkeyCurve, rand.Reader) // this generates a public & private key pair
@@ -350,6 +356,7 @@ func privateKeytoduck(privkey *ecdsa.PrivateKey) (string, error) {
 	return b64(marshalled), nil
 }
 
+// saveKeyPair saves a key pair to a file using the PEM format
 func saveKeyPair(pubkey string, privkey string, pubfile string, privfile string) error {
 	// saveKeyPair decodes the keys because PEM base64s them too, and decoding means that the pubkey in duck format is the same as the data in the PEM file. (which is nice but an arbitrary decision)
 	d, _ := base64.StdEncoding.DecodeString(privkey)
@@ -375,6 +382,7 @@ func saveKeyPair(pubkey string, privkey string, pubfile string, privfile string)
 	return nil
 }
 
+// loadKeyPair loads a keypair from a PEM file
 func loadKeyPair(pubfile string, privfile string) (pub string, priv string, err error) {
 	// see comment in saveKeyPair for why the keys are base64 encoded before passed to duckTo*Key
 	data, err := ioutil.ReadFile(pubfile)
@@ -399,6 +407,7 @@ func loadKeyPair(pubfile string, privfile string) (pub string, priv string, err 
 	return pubkey, privkey, nil
 }
 
+// makeSignature signs the given data with the given private key
 func makeSignature(privkey string, message string) (string, error) {
 	hash := sha256.Sum256([]byte(message))
 	key, err := duckToPrivateKey(privkey)
@@ -412,12 +421,14 @@ func makeSignature(privkey string, message string) (string, error) {
 	return b64(data), nil
 }
 
+// The calculateHash function is used to calculate the hash of a block, this is used in the creation of the blockchain
 func calculateHash(block Block) string {
 	block.Hash = ""
 	block.Tx.Signature = ""
 	return shasum([]byte(toJSON(block)))
 }
 
+// The shasum function calculates the hash of an array of bytes
 func shasum(record []byte) string {
 	h := sha256.New()
 	h.Write(record)
@@ -425,16 +436,19 @@ func shasum(record []byte) string {
 	return hex.EncodeToString(hashed)
 }
 
+// isHashSolution checks if the hash of a block is a valid hash for the given difficulty
 func isHashSolution(hash string) bool {
 	prefix := strings.Repeat("0", Difficulty)
 	return strings.HasPrefix(hash, prefix)
 }
 
+// The toJSON function converts an object to a JSON string
 func toJSON(v interface{}) string {
 	s, _ := json.MarshalIndent(v, "", "   ")
 	return string(s)
 }
 
+// The argsHaveOption function checks if the command line arguments have the given option
 func argsHaveOption(long string, short string) (hasOption bool, foundAt int) {
 	for i, arg := range os.Args {
 		if arg == "--"+long || arg == "-"+short {
