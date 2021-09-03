@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fatih/color"
+	"github.com/jwalton/gchalk"
 )
 
 var (
@@ -34,7 +34,7 @@ var (
 	pubkeyFile  = configDir + "/pubkey.pem"
 	privkeyFile = configDir + "/privkey.pem"
 	urlFile     = configDir + "/url.txt"
-	// Difficulty is how many zeros are needed in front of a block hash to be considered a valid block. Thus, this controls how much work miners have to do.
+	// Difficulty is how many zeros are needed in front of a block hash to be consideBrightRed a valid block. Thus, this controls how much work miners have to do.
 	Difficulty = 5
 	helpMsg    = `Duckcoin - quack money
 Usage: duckcoin [<num of blocks>] [-t/--to <pubkey>] [-a/--amount <quacks>] [-m/--message <msg>]
@@ -149,7 +149,7 @@ func main() {
 		}
 	}
 	address = duckToAddress(pubkey)
-	fmt.Printf("Mining to this address: %s\n", color.HiBlueString(address))
+	fmt.Printf("Mining to this address: %s\n", gchalk.BrightBlue(address))
 
 	loadDifficultyAndURL()
 
@@ -192,7 +192,7 @@ func mine(numOfBlocks int, data string, receiver string, amount int) {
 				_ = r.Body.Close()
 				if currBlock != b {
 					if currBlock.Solver != address {
-						fmt.Println("Gotta restart, someone else got block", currBlock.Index)
+						fmt.Println(gchalk.RGB(255, 165, 0)("Gotta restart, someone else got block " + strconv.Itoa(int(currBlock.Index))))
 						b = currBlock
 						blockChan <- currBlock
 					}
@@ -271,7 +271,7 @@ Mine:
 					}
 					newBlock.Tx.Signature = signature
 				}
-				fmt.Println(color.HiYellowString(toJson(newBlock)))
+				fmt.Println(gchalk.BrightYellow(toJson(newBlock)))
 				j, jerr := json.Marshal(newBlock)
 				if jerr != nil {
 					fmt.Println(jerr)
@@ -287,7 +287,7 @@ Mine:
 					fmt.Println(ierr)
 					return
 				}
-				fmt.Println("Server returned", color.HiGreenString(string(resp))+"\n")
+				fmt.Println("Server returned", gchalk.BrightGreen(string(resp)))
 				r.Body.Close()
 				break Mine
 			}
@@ -370,8 +370,8 @@ func saveKeyPair(pubkey string, privkey string, pubfile string, privfile string)
 		return err
 	}
 
-	color.HiYellow("Your keys have been saved to " + pubfile + "(pubkey) and " + privfile + " (privkey)")
-	color.HiRed("Do not tell anyone what's inside " + privfile)
+	gchalk.BrightYellow("Your keys have been saved to " + pubfile + "(pubkey) and " + privfile + " (privkey)")
+	gchalk.BrightRed("Do not tell anyone what's inside " + privfile)
 	return nil
 }
 
@@ -395,7 +395,7 @@ func loadKeyPair(pubfile string, privfile string) (pub string, priv string, err 
 		return "", "", errors.New("could not decode PEM data from " + privfile)
 	}
 	privkey := base64.StdEncoding.EncodeToString(key.Bytes)
-	color.HiYellow("Loaded keys from " + pubfile + " and " + privfile)
+	gchalk.BrightYellow("Loaded keys from " + pubfile + " and " + privfile)
 	return pubkey, privkey, nil
 }
 
