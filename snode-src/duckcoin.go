@@ -87,7 +87,6 @@ type Transaction struct {
 	Signature string
 }
 
-// main is the main entry point of the program.
 func main() {
 	var err error
 
@@ -305,7 +304,6 @@ func b64(data []byte) string {
 	return base64.StdEncoding.EncodeToString(data)
 }
 
-// makeKeyPair generates a new keypair for use as an address
 func makeKeyPair() (pub string, priv string, err error) {
 	pubkeyCurve := elliptic.P256()                              // see http://golang.org/pkg/crypto/elliptic/#P256
 	privkey, err := ecdsa.GenerateKey(pubkeyCurve, rand.Reader) // this generates a public & private key pair
@@ -382,7 +380,6 @@ func saveKeyPair(pubkey string, privkey string, pubfile string, privfile string)
 	return nil
 }
 
-// loadKeyPair loads a keypair from a PEM file
 func loadKeyPair(pubfile string, privfile string) (pub string, priv string, err error) {
 	// see comment in saveKeyPair for why the keys are base64 encoded before passed to duckTo*Key
 	data, err := ioutil.ReadFile(pubfile)
@@ -428,7 +425,6 @@ func calculateHash(block Block) string {
 	return shasum([]byte(toJSON(block)))
 }
 
-// The shasum function calculates the hash of an array of bytes
 func shasum(record []byte) string {
 	h := sha256.New()
 	h.Write(record)
@@ -448,7 +444,6 @@ func toJSON(v interface{}) string {
 	return string(s)
 }
 
-// The argsHaveOption function checks if the command line arguments have the given option
 func argsHaveOption(long string, short string) (hasOption bool, foundAt int) {
 	for i, arg := range os.Args {
 		if arg == "--"+long || arg == "-"+short {
