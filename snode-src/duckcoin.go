@@ -404,7 +404,7 @@ func loadKeyPair(pubfile string, privfile string) (pub string, priv string, err 
 	return pubkey, privkey, nil
 }
 
-// makeSignature signs the given data with the given private key
+// makeSignature signs message with a private key
 func makeSignature(privkey string, message string) (string, error) {
 	hash := sha256.Sum256([]byte(message))
 	key, err := duckToPrivateKey(privkey)
@@ -418,7 +418,7 @@ func makeSignature(privkey string, message string) (string, error) {
 	return b64(data), nil
 }
 
-// The calculateHash function is used to calculate the hash of a block, this is used in the creation of the blockchain
+// calculateHash calculates the hash of a Block.
 func calculateHash(block Block) string {
 	block.Hash = ""
 	block.Tx.Signature = ""
