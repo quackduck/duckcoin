@@ -432,7 +432,7 @@ func shasum(record []byte) string {
 	return hex.EncodeToString(hashed)
 }
 
-// isHashSolution checks if the hash of a block is a valid hash for the given difficulty
+// isHashSolution checks if a hash is a valid block hash using the global Difficulty
 func isHashSolution(hash string) bool {
 	prefix := strings.Repeat("0", Difficulty)
 	return strings.HasPrefix(hash, prefix)
