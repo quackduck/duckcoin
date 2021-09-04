@@ -205,7 +205,7 @@ func mine(numOfBlocks int, data string, receiver string, amount int) {
 	}
 }
 
-// loadDifficultyAndURL loads the URL from the config file, and then loads the difficulty from that.
+// loadDifficultyAndURL loads the server URL from the config file, and then loads the difficulty by contacting that server.
 func loadDifficultyAndURL() {
 	data, err := ioutil.ReadFile(urlFile)
 	if err != nil {
