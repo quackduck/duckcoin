@@ -227,8 +227,19 @@ func handleGetBlocks(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, f)
 	f.Close()
 }
+
+func createFloatOfBalance(bal int) float64 {
+	return float64(bal) / float64(100000000)
+}
+
 func handleGetBalances(w http.ResponseWriter, r *http.Request) {
-	bytes, err := json.MarshalIndent(Balances, "", "  ")
+	balancesNew := make(map[string]float64)
+
+	for address, balance := range Balances {
+		balancesNew[address] = createFloatOfBalance(balance)
+	}
+
+	bytes, err := json.MarshalIndent(balancesNew, "", "  ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
