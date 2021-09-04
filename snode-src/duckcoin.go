@@ -156,6 +156,7 @@ func main() {
 	mine(numOfBlocks, data, receiver, amount)
 }
 
+// mine mines numOfBlocks blocks, with the arbitrary data field set to data. It also takes in the receiver's address and amount to send in each block, if the block should contain a transaction.
 func mine(numOfBlocks int, data string, receiver string, amount int) {
 	var i int
 	var b Block
@@ -203,6 +204,7 @@ func mine(numOfBlocks int, data string, receiver string, amount int) {
 	}
 }
 
+// loadDifficultyAndURL loads the server URL from the config file, and then loads the difficulty by contacting that server.
 func loadDifficultyAndURL() {
 	data, err := ioutil.ReadFile(urlFile)
 	if err != nil {
@@ -220,12 +222,13 @@ func loadDifficultyAndURL() {
 	_ = r.Body.Close()
 }
 
+// duckToAddress converts a Duckcoin public key to a Duckcoin address.
 func duckToAddress(duckkey string) string {
 	hash := sha256.Sum256([]byte(duckkey))
 	return b64(hash[:])
 }
 
-// create a new block using previous block's hash
+// makeBlock creates one new block by accepting the last block on blockChan, and restarting mining in case a new block is sent. It takes in the user's private key to be used in signing tx, the transaction, if tx.Amount is not 0. It also takes in the arbitrary data to be included in the block and the user's address (solver).
 func makeBlock(blockChan chan Block, privkey string, data string, solver string, tx Transaction) {
 	oldBlock := <-blockChan
 
@@ -271,7 +274,7 @@ Mine:
 					}
 					newBlock.Tx.Signature = signature
 				}
-				fmt.Println(gchalk.BrightYellow(toJson(newBlock)))
+				fmt.Println(gchalk.BrightYellow(toJSON(newBlock)))
 				j, jerr := json.Marshal(newBlock)
 				if jerr != nil {
 					fmt.Println(jerr)
@@ -296,6 +299,7 @@ Mine:
 	return
 }
 
+// b64 encodes a byte array to a base64 string
 func b64(data []byte) string {
 	return base64.StdEncoding.EncodeToString(data)
 }
@@ -350,6 +354,7 @@ func privateKeytoduck(privkey *ecdsa.PrivateKey) (string, error) {
 	return b64(marshalled), nil
 }
 
+// saveKeyPair saves a key pair to a file using the PEM format
 func saveKeyPair(pubkey string, privkey string, pubfile string, privfile string) error {
 	// saveKeyPair decodes the keys because PEM base64s them too, and decoding means that the pubkey in duck format is the same as the data in the PEM file. (which is nice but an arbitrary decision)
 	d, _ := base64.StdEncoding.DecodeString(privkey)
@@ -399,6 +404,7 @@ func loadKeyPair(pubfile string, privfile string) (pub string, priv string, err 
 	return pubkey, privkey, nil
 }
 
+// makeSignature signs message with a private key
 func makeSignature(privkey string, message string) (string, error) {
 	hash := sha256.Sum256([]byte(message))
 	key, err := duckToPrivateKey(privkey)
@@ -412,10 +418,11 @@ func makeSignature(privkey string, message string) (string, error) {
 	return b64(data), nil
 }
 
+// calculateHash calculates the hash of a Block.
 func calculateHash(block Block) string {
 	block.Hash = ""
 	block.Tx.Signature = ""
-	return shasum([]byte(toJson(block)))
+	return shasum([]byte(toJSON(block)))
 }
 
 func shasum(record []byte) string {
@@ -425,12 +432,13 @@ func shasum(record []byte) string {
 	return hex.EncodeToString(hashed)
 }
 
+// isHashSolution checks if a hash is a valid block hash using the global Difficulty
 func isHashSolution(hash string) bool {
 	prefix := strings.Repeat("0", Difficulty)
 	return strings.HasPrefix(hash, prefix)
 }
 
-func toJson(v interface{}) string {
+func toJSON(v interface{}) string {
 	s, _ := json.MarshalIndent(v, "", "   ")
 	return string(s)
 }
