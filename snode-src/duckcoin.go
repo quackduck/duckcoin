@@ -157,7 +157,7 @@ func main() {
 	mine(numOfBlocks, data, receiver, amount)
 }
 
-// mine mines a given number of blocks with the given data, receiver, and amount.
+// mine mines numOfBlocks blocks, with the arbitrary data field set to data. It also takes in the receiver's address and amount to send in each block, if the block should contain a transaction.
 func mine(numOfBlocks int, data string, receiver string, amount int) {
 	var i int
 	var b Block
