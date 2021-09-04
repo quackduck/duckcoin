@@ -438,7 +438,6 @@ func isHashSolution(hash string) bool {
 	return strings.HasPrefix(hash, prefix)
 }
 
-// The toJSON function converts an object to a JSON string
 func toJSON(v interface{}) string {
 	s, _ := json.MarshalIndent(v, "", "   ")
 	return string(s)
