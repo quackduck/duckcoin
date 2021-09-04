@@ -157,7 +157,7 @@ func main() {
 	mine(numOfBlocks, data, receiver, amount)
 }
 
-// mine mines a given number of blocks with the given data, receiver, and amount.
+// mine mines numOfBlocks blocks, with the arbitrary data field set to data. It also takes in the receiver's address and amount to send in each block, if the block should contain a transaction.
 func mine(numOfBlocks int, data string, receiver string, amount int) {
 	var i int
 	var b Block
@@ -205,7 +205,7 @@ func mine(numOfBlocks int, data string, receiver string, amount int) {
 	}
 }
 
-// loadDifficultyAndURL loads the URL from the config file, and then loads the difficulty from that.
+// loadDifficultyAndURL loads the server URL from the config file, and then loads the difficulty by contacting that server.
 func loadDifficultyAndURL() {
 	data, err := ioutil.ReadFile(urlFile)
 	if err != nil {
@@ -229,7 +229,7 @@ func duckToAddress(duckkey string) string {
 	return b64(hash[:])
 }
 
-// makeBlock creates a new block using previous block's hash
+// makeBlock creates one new block by accepting the last block on blockChan, and restarting mining in case a new block is sent. It takes in the user's private key to be used in signing tx, the transaction, if tx.Amount is not 0. It also takes in the arbitrary data to be included in the block and the user's address (solver).
 func makeBlock(blockChan chan Block, privkey string, data string, solver string, tx Transaction) {
 	oldBlock := <-blockChan
 
@@ -407,7 +407,7 @@ func loadKeyPair(pubfile string, privfile string) (pub string, priv string, err 
 	return pubkey, privkey, nil
 }
 
-// makeSignature signs the given data with the given private key
+// makeSignature signs message with a private key
 func makeSignature(privkey string, message string) (string, error) {
 	hash := sha256.Sum256([]byte(message))
 	key, err := duckToPrivateKey(privkey)
@@ -421,7 +421,7 @@ func makeSignature(privkey string, message string) (string, error) {
 	return b64(data), nil
 }
 
-// The calculateHash function is used to calculate the hash of a block, this is used in the creation of the blockchain
+// calculateHash calculates the hash of a Block.
 func calculateHash(block Block) string {
 	block.Hash = ""
 	block.Tx.Signature = ""
@@ -436,13 +436,12 @@ func shasum(record []byte) string {
 	return hex.EncodeToString(hashed)
 }
 
-// isHashSolution checks if the hash of a block is a valid hash for the given difficulty
+// isHashSolution checks if a hash is a valid block hash using the global Difficulty
 func isHashSolution(hash string) bool {
 	prefix := strings.Repeat("0", Difficulty)
 	return strings.HasPrefix(hash, prefix)
 }
 
-// The toJSON function converts an object to a JSON string
 func toJSON(v interface{}) string {
 	s, _ := json.MarshalIndent(v, "", "   ")
 	return string(s)
