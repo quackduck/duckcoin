@@ -247,9 +247,9 @@ func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var b Block
 
-	decoder := json.NewDecoder(r.Body)
+	decoder := json.NewDecoder(io.LimitReader(r.Body, 1e6))
 	if err := decoder.Decode(&b); err != nil {
-		fmt.Println("Bad request")
+		fmt.Println("Bad request. This may be caused by a block that is too big (more than 1mb) but these are usually with malicious intent.")
 		respondWithJSON(w, http.StatusBadRequest, r.Body)
 		return
 	}
@@ -278,6 +278,9 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 }
 
 func isValid(newBlock, oldBlock Block) error {
+	const blockDataLimit = 1e3 * 250
+	const txDataLimit = 1e3 * 250
+
 	if newBlock.Tx.Amount < 0 {
 		return errors.New("Amount is negative")
 	}
@@ -292,6 +295,12 @@ func isValid(newBlock, oldBlock Block) error {
 	}
 	if !isBlockSolution(newBlock.Hash) {
 		return errors.New("Block is not a solution (does not have Difficulty zeros in hash)")
+	}
+	if len(newBlock.Data) > blockDataLimit {
+		return errors.New("Block's Data field is too large. Should be >= 250 kb")
+	}
+	if len(newBlock.Tx.Data) > txDataLimit {
+		return errors.New("Transaction's Data field is too large. Should be >= 250 kb")
 	}
 	if newBlock.Tx.Amount > 0 {
 		if duckToAddress(newBlock.Tx.PubKey) != newBlock.Tx.Sender {
