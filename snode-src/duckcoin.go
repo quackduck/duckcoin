@@ -229,7 +229,7 @@ func duckToAddress(duckkey string) string {
 	return b64(hash[:])
 }
 
-// makeBlock creates a new block using previous block's hash
+// makeBlock creates one new block by accepting the last block on blockChan, and restarting mining in case a new block is sent. It takes in the user's private key to be used in signing tx, the transaction, if tx.Amount is not 0. It also takes in the arbitrary data to be included in the block and the user's address (solver).
 func makeBlock(blockChan chan Block, privkey string, data string, solver string, tx Transaction) {
 	oldBlock := <-blockChan
 
