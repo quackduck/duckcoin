@@ -25,6 +25,7 @@ const (
 	BlockchainFile  = "blockchain.json"
 	NewestBlockFile = "newestblock.json"
 	BalancesFile    = "balances.json"
+	duckToQuacks	= 1e6
 )
 
 type Block struct {
@@ -228,15 +229,11 @@ func handleGetBlocks(w http.ResponseWriter, r *http.Request) {
 	f.Close()
 }
 
-func createFloatOfBalance(bal int) float64 {
-	return float64(bal) / float64(1e6)
-}
-
 func handleGetBalances(w http.ResponseWriter, r *http.Request) {
 	balancesNew := make(map[string]float64)
 
 	for address, balance := range Balances {
-		balancesNew[address] = createFloatOfBalance(balance)
+		balancesNew[address] = float64(balance) / float64(duckToQuacks)
 	}
 
 	bytes, err := json.MarshalIndent(balancesNew, "", "  ")
