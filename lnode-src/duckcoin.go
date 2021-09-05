@@ -17,22 +17,23 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gorilla/mux"
+	"github.com/gorilla/mux" // simple http router library
 )
 
 const (
-	Difficulty      = 5
+	Difficulty      = 5 // this should change based on time taken by each block
 	BlockchainFile  = "blockchain.json"
 	NewestBlockFile = "newestblock.json"
 	BalancesFile    = "balances.json"
 )
 
+// A Block represents a validated set of transactions with proof of work, which makes it really hard to rewrite the blockchain.
 type Block struct {
-	// Index is the Block number in the Icoin Blockchain
+	// Index is the Block number
 	Index int64
-	// Timestamp is the Unix timestamp of the date of creation of this Block
+	// Timestamp is the Unix timestamp in milliseconds of the date of creation of this Block
 	Timestamp int64
-	// Data stores any (arbitrary) additional data.
+	// Data stores any (arbitrary) additional data >= 250 kb long.
 	Data string
 	//Hash stores the hex value of the sha256 sum of the block represented as JSON with the indent as "   " and Hash as ""
 	Hash string
@@ -46,8 +47,9 @@ type Block struct {
 	Tx Transaction
 }
 
+// A Transaction is a transfer of any amount of duckcoin from one address to another.
 type Transaction struct {
-	// Data is any (arbitrary) additional data.
+	// Data is any (arbitrary) additional data >= 250 kb long.
 	Data string
 	//Sender is the address of the sender.
 	Sender string
