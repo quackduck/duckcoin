@@ -22,7 +22,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jwalton/gchalk"
+	"github.com/jwalton/gchalk" // color library
+	"github.com/quackduck/duckcoin/shared"
 )
 
 var (
@@ -72,7 +73,7 @@ type Block struct {
 	Tx Transaction
 }
 
-// A Transaction is a transfer of any amount of duckcoins from one address to another.
+// A Transaction is a transfer of any amount of duckcoin from one address to another.
 type Transaction struct {
 	// Data is any (arbitrary) additional data >= 250 kb long.
 	Data string
