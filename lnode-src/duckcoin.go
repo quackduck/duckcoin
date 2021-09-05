@@ -17,7 +17,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gorilla/mux" // simple http router library
+	"github.com/gorilla/mux"
+	"github.com/quackduck/duckcoin/util"
 )
 
 const (
