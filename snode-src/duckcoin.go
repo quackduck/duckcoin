@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -23,7 +22,7 @@ import (
 	"time"
 
 	"github.com/jwalton/gchalk" // color library
-	"github.com/quackduck/duckcoin/shared"
+	. "github.com/quackduck/duckcoin/util"
 )
 
 var (
@@ -53,63 +52,63 @@ Examples:
 	pubkey, privkey string
 )
 
-// A Block represents a validated set of transactions with proof of work, which makes it really hard to rewrite the blockchain.
-type Block struct {
-	// Index is the Block number
-	Index int64
-	// Timestamp is the Unix timestamp in milliseconds of the date of creation of this Block
-	Timestamp int64
-	// Data stores any (arbitrary) additional data >= 250 kb long.
-	Data string
-	//Hash stores the hex value of the sha256 sum of the block represented as JSON with the indent as "   " and Hash as ""
-	Hash string
-	// PrevHash is the hash of the previous Block in the Blockchain
-	PrevHash string
-	// Solution is the nonce value that makes the Hash have a prefix of Difficulty zeros
-	Solution string
-	// Solver is the public key of the sender
-	Solver string
-	// Transaction is the transaction associated with this block
-	Tx Transaction
-}
-
-// A Transaction is a transfer of any amount of duckcoin from one address to another.
-type Transaction struct {
-	// Data is any (arbitrary) additional data >= 250 kb long.
-	Data string
-	//Sender is the address of the sender.
-	Sender string
-	//Receiver is the address of the receiver.
-	Receiver string
-	//Amount is the amount to be payed by the Sender to the Receiver. It is always a positive number.
-	Amount int
-	//PubKey is the Duckcoin formatted public key of the sender
-	PubKey    string
-	Signature string
-}
+//// A Block represents a validated set of transactions with proof of work, which makes it really hard to rewrite the blockchain.
+//type Block struct {
+//	// Index is the Block number
+//	Index int64
+//	// Timestamp is the Unix timestamp in milliseconds of the date of creation of this Block
+//	Timestamp int64
+//	// Data stores any (arbitrary) additional data >= 250 kb long.
+//	Data string
+//	//Hash stores the hex value of the sha256 sum of the block represented as JSON with the indent as "   " and Hash as ""
+//	Hash string
+//	// PrevHash is the hash of the previous Block in the Blockchain
+//	PrevHash string
+//	// Solution is the nonce value that makes the Hash have a prefix of Difficulty zeros
+//	Solution string
+//	// Solver is the public key of the sender
+//	Solver string
+//	// Transaction is the transaction associated with this block
+//	Tx Transaction
+//}
+//
+//// A Transaction is a transfer of any amount of duckcoin from one address to another.
+//type Transaction struct {
+//	// Data is any (arbitrary) additional data >= 250 kb long.
+//	Data string
+//	//Sender is the address of the sender.
+//	Sender string
+//	//Receiver is the address of the receiver.
+//	Receiver string
+//	//Amount is the amount to be payed by the Sender to the Receiver. It is always a positive number.
+//	Amount int
+//	//PubKey is the Duckcoin formatted public key of the sender
+//	PubKey    string
+//	Signature string
+//}
 
 func main() {
 	var err error
 
-	if ok, _ := argsHaveOption("help", "h"); ok {
+	if ok, _ := ArgsHaveOption("help", "h"); ok {
 		fmt.Println(helpMsg)
 		return
 	}
-	if ok, i := argsHaveOption("to", "t"); ok {
+	if ok, i := ArgsHaveOption("to", "t"); ok {
 		if len(os.Args) < i+2 {
 			fmt.Println("Too few arguments to --to")
 			return
 		}
 		receiver = os.Args[i+1]
 	}
-	if ok, i := argsHaveOption("message", "m"); ok {
+	if ok, i := ArgsHaveOption("message", "m"); ok {
 		if len(os.Args) < i+2 {
 			fmt.Println("Too few arguments to --message")
 			return
 		}
 		data = os.Args[i+1]
 	}
-	if ok, i := argsHaveOption("amount", "a"); ok {
+	if ok, i := ArgsHaveOption("amount", "a"); ok {
 		if len(os.Args) < i+2 {
 			fmt.Println("Too few arguments to --amount")
 			return
@@ -226,7 +225,7 @@ func loadDifficultyAndURL() {
 // duckToAddress converts a Duckcoin public key to a Duckcoin address.
 func duckToAddress(duckkey string) string {
 	hash := sha256.Sum256([]byte(duckkey))
-	return b64(hash[:])
+	return B64(hash[:])
 }
 
 // makeBlock creates one new block by accepting the last block on blockChan, and restarting mining in case a new block is sent. It takes in the user's private key to be used in signing tx, the transaction, if tx.Amount is not 0. It also takes in the arbitrary data to be included in the block and the user's address (solver).
@@ -259,14 +258,14 @@ Mine:
 			}
 		default:
 			newBlock.Solution = strconv.Itoa(i)
-			if !isHashSolution(calculateHash(newBlock)) {
+			if !IsHashSolution(CalculateHash(newBlock), Difficulty) {
 				if i&(1<<17-1) == 0 && i != 0 { // optimize to check every 131072 iterations (bitwise ops are faster)
 					fmt.Printf("Approx hashrate: %0.2f. Have checked %d hashes.\n", float64(i)/time.Since(t).Seconds(), i)
 				}
 				continue
 			} else {
 				fmt.Println("\nBlock made! It took", time.Since(t).Round(time.Second/100))
-				newBlock.Hash = calculateHash(newBlock)
+				newBlock.Hash = CalculateHash(newBlock)
 				if newBlock.Tx.Amount != 0 {
 					signature, err := makeSignature(privkey, newBlock.Hash)
 					if err != nil {
@@ -275,7 +274,7 @@ Mine:
 					}
 					newBlock.Tx.Signature = signature
 				}
-				fmt.Println(gchalk.BrightYellow(toJSON(newBlock)))
+				fmt.Println(gchalk.BrightYellow(ToJSON(newBlock)))
 				j, jerr := json.Marshal(newBlock)
 				if jerr != nil {
 					fmt.Println(jerr)
@@ -300,10 +299,10 @@ Mine:
 	return
 }
 
-// b64 encodes a byte array to a base64 string
-func b64(data []byte) string {
-	return base64.StdEncoding.EncodeToString(data)
-}
+//// B64 encodes a byte array to a base64 string
+//func B64(data []byte) string {
+//	return base64.StdEncoding.EncodeToString(data)
+//}
 
 func makeKeyPair() (pub string, priv string, err error) {
 	pubkeyCurve := elliptic.P256()                              // see http://golang.org/pkg/crypto/elliptic/#P256
@@ -343,7 +342,7 @@ func publicKeytoduck(pubkey *ecdsa.PublicKey) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return b64(marshalled), nil
+	return B64(marshalled), nil
 }
 
 // privateKeytoduck returns a serialized private key as a base64 string
@@ -352,7 +351,7 @@ func privateKeytoduck(privkey *ecdsa.PrivateKey) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return b64(marshalled), nil
+	return B64(marshalled), nil
 }
 
 // saveKeyPair saves a key pair to a file using the PEM format
@@ -416,39 +415,39 @@ func makeSignature(privkey string, message string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return b64(data), nil
+	return B64(data), nil
 }
 
-// calculateHash calculates the hash of a Block.
-func calculateHash(block Block) string {
-	block.Hash = ""
-	block.Tx.Signature = ""
-	return shasum([]byte(toJSON(block)))
-}
+//// CalculateHash calculates the hash of a Block.
+//func CalculateHash(block Block) string {
+//	block.Hash = ""
+//	block.Tx.Signature = ""
+//	return Shasum([]byte(ToJSON(block)))
+//}
 
-func shasum(record []byte) string {
-	h := sha256.New()
-	h.Write(record)
-	hashed := h.Sum(nil)
-	return hex.EncodeToString(hashed)
-}
+//func Shasum(record []byte) string {
+//	h := sha256.New()
+//	h.Write(record)
+//	hashed := h.Sum(nil)
+//	return hex.EncodeToString(hashed)
+//}
 
-// isHashSolution checks if a hash is a valid block hash using the global Difficulty
-func isHashSolution(hash string) bool {
-	prefix := strings.Repeat("0", Difficulty)
-	return strings.HasPrefix(hash, prefix)
-}
+//// IsHashSolution checks if a hash is a valid block hash using the global Difficulty
+//func IsHashSolution(hash string) bool {
+//	prefix := strings.Repeat("0", Difficulty)
+//	return strings.HasPrefix(hash, prefix)
+//}
 
-func toJSON(v interface{}) string {
-	s, _ := json.MarshalIndent(v, "", "   ")
-	return string(s)
-}
+//func ToJSON(v interface{}) string {
+//	s, _ := json.MarshalIndent(v, "", "   ")
+//	return string(s)
+//}
 
-func argsHaveOption(long string, short string) (hasOption bool, foundAt int) {
-	for i, arg := range os.Args {
-		if arg == "--"+long || arg == "-"+short {
-			return true, i
-		}
-	}
-	return false, 0
-}
+//func ArgsHaveOption(long string, short string) (hasOption bool, foundAt int) {
+//	for i, arg := range os.Args {
+//		if arg == "--"+long || arg == "-"+short {
+//			return true, i
+//		}
+//	}
+//	return false, 0
+//}

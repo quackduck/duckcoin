@@ -45,8 +45,8 @@ func ArgsHaveOption(long string, short string) (hasOption bool, foundAt int) {
 	return false, 0
 }
 
-// duckToPrivateKey returns a deserialized base64 encoded private key
-func duckToPrivateKey(duckkey string) (*ecdsa.PrivateKey, error) {
+// DuckToPrivateKey returns a deserialized base64 encoded private key
+func DuckToPrivateKey(duckkey string) (*ecdsa.PrivateKey, error) {
 	d, err := base64.StdEncoding.DecodeString(duckkey)
 	if err != nil {
 		return nil, err
@@ -58,33 +58,33 @@ func duckToPrivateKey(duckkey string) (*ecdsa.PrivateKey, error) {
 	return p, nil
 }
 
-// publicKeytoduck returns a serialized public key as a base64 string
-func publicKeytoduck(pubkey *ecdsa.PublicKey) (string, error) {
+// PublicKeytoduck returns a serialized public key as a base64 string
+func PublicKeytoduck(pubkey *ecdsa.PublicKey) (string, error) {
 	marshalled, err := x509.MarshalPKIXPublicKey(pubkey)
 	if err != nil {
 		return "", err
 	}
-	return b64(marshalled), nil
+	return B64(marshalled), nil
 }
 
-// b64 encodes a byte array to a base64 string
-func b64(data []byte) string {
+// B64 encodes a byte array to a base64 string
+func B64(data []byte) string {
 	return base64.StdEncoding.EncodeToString(data)
 }
 
-// privateKeytoduck returns a serialized private key as a base64 string
-func privateKeytoduck(privkey *ecdsa.PrivateKey) (string, error) {
+// PrivateKeytoduck returns a serialized private key as a base64 string
+func PrivateKeytoduck(privkey *ecdsa.PrivateKey) (string, error) {
 	marshalled, err := x509.MarshalECPrivateKey(privkey)
 	if err != nil {
 		return "", err
 	}
-	return b64(marshalled), nil
+	return B64(marshalled), nil
 }
 
-// duckToAddress converts a Duckcoin public key to a Duckcoin address.
-func duckToAddress(duckkey string) string {
+// DuckToAddress converts a Duckcoin public key to a Duckcoin address.
+func DuckToAddress(duckkey string) string {
 	hash := sha256.Sum256([]byte(duckkey))
-	return b64(hash[:])
+	return B64(hash[:])
 }
 
 // A Block represents a validated set of transactions with proof of work, which makes it really hard to rewrite the blockchain.
