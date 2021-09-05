@@ -1,11 +1,6 @@
 package main
 
 import (
-	"crypto/ecdsa"
-	"crypto/sha256"
-	"crypto/x509"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -28,62 +22,39 @@ const (
 	BalancesFile    = "balances.json"
 )
 
-// A Block represents a validated set of transactions with proof of work, which makes it really hard to rewrite the blockchain.
-type Block struct {
-	// Index is the Block number
-	Index int64
-	// Timestamp is the Unix timestamp in milliseconds of the date of creation of this Block
-	Timestamp int64
-	// Data stores any (arbitrary) additional data >= 250 kb long.
-	Data string
-	//Hash stores the hex value of the sha256 sum of the block represented as JSON with the indent as "   " and Hash as ""
-	Hash string
-	// PrevHash is the hash of the previous Block in the Blockchain
-	PrevHash string
-	// Solution is the nonce value that makes the Hash have a prefix of Difficulty zeros
-	Solution string
-	// Solver is the public key of the sender
-	Solver string
-	// Transaction is the transaction associated with this block
-	Tx Transaction
-}
-
-// A Transaction is a transfer of any amount of duckcoin from one address to another.
-type Transaction struct {
-	// Data is any (arbitrary) additional data >= 250 kb long.
-	Data string
-	//Sender is the address of the sender.
-	Sender string
-	//Receiver is the address of the receiver.
-	Receiver string
-	//Amount is the amount to be payed by the Sender to the Receiver. It is always a positive number.
-	Amount int
-	//PubKey is the Duckcoin formatted public key of the sender
-	PubKey    string
-	Signature string
-}
-
 var (
-	NewestBlock Block
+	NewestBlock util.Block
 	Balances    = make(map[string]int)
 )
 
 func main() {
 	if !fileExists(BlockchainFile) {
 		t := time.Now() // genesis time
-		genesisBlock := Block{0, t.Unix(), "Genesis block. Thank you so much to Jason Antwi-Appah for the incredible name that is Duckcoin. QUACK!", "", "🐤", "Go Gophers and DUCKS! github.com/quackduck", "Ishan Goel (quackduck on GitHub)", Transaction{"Genesis transaction", "", "", 0, "", ""}}
-		genesisBlock.Hash = calculateHash(genesisBlock)
-		fmt.Println(toJson(genesisBlock))
+		genesisBlock := util.Block{
+			Index:     0,
+			Timestamp: t.Unix(),
+			Data:      "Genesis block. Thank you so much to Jason Antwi-Appah for the incredible name that is Duckcoin. QUACK!",
+			Hash:      "",
+			PrevHash:  "🐤",
+			Solution:  "Go Gophers and DUCKS! github.com/quackduck",
+			Solver:    "Ishan Goel (quackduck on GitHub)",
+			Tx: util.Transaction{
+				Data: "Genesis transaction",
+			},
+		}
+
+		genesisBlock.Hash = util.CalculateHash(genesisBlock)
+		fmt.Println(util.ToJSON(genesisBlock))
 		f, _ := os.Create(BlockchainFile)
-		f.Write([]byte(toJson([]Block{genesisBlock})))
+		f.Write([]byte(util.ToJSON([]util.Block{genesisBlock})))
 		f.Close()
 		NewestBlock = genesisBlock
-		err := ioutil.WriteFile(NewestBlockFile, []byte(toJson(NewestBlock)), 0755)
+		err := ioutil.WriteFile(NewestBlockFile, []byte(util.ToJSON(NewestBlock)), 0755)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-		err = ioutil.WriteFile(BalancesFile, []byte(toJson(Balances)), 0755)
+		err = ioutil.WriteFile(BalancesFile, []byte(util.ToJSON(Balances)), 0755)
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -150,20 +121,7 @@ func main() {
 
 }
 
-func checkSignature(signature string, pubkey string, message string) (bool, error) {
-	decodedSig, err := base64.StdEncoding.DecodeString(signature)
-	if err != nil {
-		return false, err
-	}
-	hash := sha256.Sum256([]byte(message))
-	key, err := duckToPublicKey(pubkey)
-	if err != nil {
-		return false, err
-	}
-	return ecdsa.VerifyASN1(key, hash[:], decodedSig), nil
-}
-
-func addBlockToChain(b Block) {
+func addBlockToChain(b util.Block) {
 	Balances[b.Solver] += 1
 	NewestBlock = b
 	if b.Tx.Amount != 0 {
@@ -192,11 +150,11 @@ func addBlockToChain(b Block) {
 	}
 	f.Close()
 
-	err = ioutil.WriteFile(NewestBlockFile, []byte(toJson(b)), 0755)
+	err = ioutil.WriteFile(NewestBlockFile, []byte(util.ToJSON(b)), 0755)
 	if err != nil {
 		fmt.Println("Could not write to", NewestBlockFile)
 	}
-	err = ioutil.WriteFile(BalancesFile, []byte(toJson(Balances)), 0755)
+	err = ioutil.WriteFile(BalancesFile, []byte(util.ToJSON(Balances)), 0755)
 	if err != nil {
 		fmt.Println("Could not write to", BalancesFile)
 	}
@@ -248,7 +206,7 @@ func handleGetNewest(w http.ResponseWriter, r *http.Request) {
 }
 func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	var b Block
+	var b util.Block
 
 	decoder := json.NewDecoder(io.LimitReader(r.Body, 1e6))
 	if err := decoder.Decode(&b); err != nil {
@@ -280,7 +238,7 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.Write(response)
 }
 
-func isValid(newBlock, oldBlock Block) error {
+func isValid(newBlock, oldBlock util.Block) error {
 	const blockDataLimit = 1e3 * 250
 	const txDataLimit = 1e3 * 250
 
@@ -293,10 +251,10 @@ func isValid(newBlock, oldBlock Block) error {
 	if oldBlock.Hash != newBlock.PrevHash {
 		return errors.New("PrevHash should be " + oldBlock.Hash)
 	}
-	if calculateHash(newBlock) != newBlock.Hash {
+	if util.CalculateHash(newBlock) != newBlock.Hash {
 		return errors.New("Block Hash is incorrect. This usually happens if your Difficulty is set incorrectly. Restart your miner.")
 	}
-	if !isBlockSolution(newBlock.Hash) {
+	if !util.IsHashSolution(newBlock.Hash, Difficulty) {
 		return errors.New("Block is not a solution (does not have Difficulty zeros in hash)")
 	}
 	if len(newBlock.Data) > blockDataLimit {
@@ -306,10 +264,10 @@ func isValid(newBlock, oldBlock Block) error {
 		return errors.New("Transaction's Data field is too large. Should be >= 250 kb")
 	}
 	if newBlock.Tx.Amount > 0 {
-		if duckToAddress(newBlock.Tx.PubKey) != newBlock.Tx.Sender {
+		if util.DuckToAddress(newBlock.Tx.PubKey) != newBlock.Tx.Sender {
 			return errors.New("Pubkey does not match sender address")
 		}
-		if ok, err := checkSignature(newBlock.Tx.Signature, newBlock.Tx.PubKey, newBlock.Hash); !ok {
+		if ok, err := util.CheckSignature(newBlock.Tx.Signature, newBlock.Tx.PubKey, newBlock.Hash); !ok {
 			if err != nil {
 				return err
 			} else {
@@ -327,49 +285,4 @@ func isValid(newBlock, oldBlock Block) error {
 		}
 	}
 	return nil
-}
-
-func duckToAddress(duckkey string) string {
-	hash := sha256.Sum256([]byte(duckkey))
-	return base64.StdEncoding.EncodeToString(hash[:])
-}
-
-func calculateHash(block Block) string {
-	block.Hash = ""
-	block.Tx.Signature = ""
-	return shasum([]byte(toJson(block)))
-}
-
-func shasum(record []byte) string {
-	h := sha256.New()
-	h.Write(record)
-	hashed := h.Sum(nil)
-	return hex.EncodeToString(hashed)
-}
-
-func isBlockSolution(hash string) bool {
-	//hash := shasum([]byte(solution))
-	prefix := strings.Repeat("0", Difficulty)
-	return strings.HasPrefix(hash, prefix)
-}
-
-func toJson(v interface{}) string {
-	s, _ := json.MarshalIndent(v, "", "   ")
-	return string(s)
-}
-
-func duckToPublicKey(duckkey string) (*ecdsa.PublicKey, error) {
-	d, err := base64.StdEncoding.DecodeString(duckkey)
-	if err != nil {
-		return nil, err
-	}
-	p, err := x509.ParsePKIXPublicKey(d)
-	if err != nil {
-		return nil, err
-	}
-	pubkey, ok := p.(*ecdsa.PublicKey)
-	if !ok {
-		return nil, errors.New("pubkey is not of type *ecdsa.PublicKey")
-	}
-	return pubkey, nil
 }
