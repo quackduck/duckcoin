@@ -229,7 +229,7 @@ func handleGetBlocks(w http.ResponseWriter, r *http.Request) {
 }
 
 func createFloatOfBalance(bal int) float64 {
-	return float64(bal) / float64(100000000)
+	return float64(bal) / float64(1e6)
 }
 
 func handleGetBalances(w http.ResponseWriter, r *http.Request) {
