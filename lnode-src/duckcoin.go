@@ -21,11 +21,12 @@ import (
 )
 
 const (
-	Difficulty      = 5
-	BlockchainFile  = "blockchain.json"
-	NewestBlockFile = "newestblock.json"
-	BalancesFile    = "balances.json"
-	duckToQuacks	= 1e6
+	Difficulty       = 5
+	BlockchainFile   = "blockchain.json"
+	NewestBlockFile  = "newestblock.json"
+	BalancesFile     = "balances.json"
+	duckToMicroquacks = 1e8
+	reward           = 1e6
 )
 
 type Block struct {
@@ -162,7 +163,7 @@ func checkSignature(signature string, pubkey string, message string) (bool, erro
 }
 
 func addBlockToChain(b Block) {
-	Balances[b.Solver] += 1
+	Balances[b.Solver] += reward
 	NewestBlock = b
 	if b.Tx.Amount != 0 {
 		Balances[b.Solver] -= b.Tx.Amount
@@ -233,7 +234,7 @@ func handleGetBalances(w http.ResponseWriter, r *http.Request) {
 	balancesNew := make(map[string]float64)
 
 	for address, balance := range Balances {
-		balancesNew[address] = float64(balance) / float64(duckToQuacks)
+		balancesNew[address] = float64(balance) / float64(duckToMicroquacks)
 	}
 
 	bytes, err := json.MarshalIndent(balancesNew, "", "  ")
@@ -305,10 +306,10 @@ func isValid(newBlock, oldBlock Block) error {
 		return errors.New("Block is not a solution (does not have Difficulty zeros in hash)")
 	}
 	if len(newBlock.Data) > blockDataLimit {
-		return errors.New("Block's Data field is too large. Should be >= 250 kb")
+		return errors.New("Block's Data field is too large. Should be <= 250 kb")
 	}
 	if len(newBlock.Tx.Data) > txDataLimit {
-		return errors.New("Transaction's Data field is too large. Should be >= 250 kb")
+		return errors.New("Transaction's Data field is too large. Should be <= 250 kb")
 	}
 	if newBlock.Tx.Amount > 0 {
 		if duckToAddress(newBlock.Tx.PubKey) != newBlock.Tx.Sender {
@@ -322,7 +323,7 @@ func isValid(newBlock, oldBlock Block) error {
 			}
 		}
 		if newBlock.Tx.Sender == newBlock.Solver {
-			if Balances[newBlock.Tx.Sender]+1 < newBlock.Tx.Amount { // plus 1 because that's the reward
+			if Balances[newBlock.Tx.Sender] + reward < newBlock.Tx.Amount { 
 				return errors.New("Insufficient balance")
 			}
 		} else {
@@ -353,7 +354,6 @@ func shasum(record []byte) string {
 }
 
 func isBlockSolution(hash string) bool {
-	//hash := shasum([]byte(solution))
 	prefix := strings.Repeat("0", Difficulty)
 	return strings.HasPrefix(hash, prefix)
 }
