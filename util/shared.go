@@ -2,90 +2,16 @@ package util
 
 import (
 	"crypto/ecdsa"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 )
-
-// CalculateHash calculates the hash of a Block.
-func CalculateHash(block Block) string {
-	block.Hash = ""
-	block.Tx.Signature = ""
-	return Shasum([]byte(ToJSON(block)))
-}
-
-func Shasum(record []byte) string {
-	h := sha256.New()
-	h.Write(record)
-	hashed := h.Sum(nil)
-	return hex.EncodeToString(hashed)
-}
-
-// IsHashSolution checks if a hash is a valid block hash using the global Difficulty
-func IsHashSolution(hash string, difficulty int) bool {
-	prefix := strings.Repeat("0", difficulty)
-	return strings.HasPrefix(hash, prefix)
-}
-
-func ToJSON(v interface{}) string {
-	s, _ := json.MarshalIndent(v, "", "   ")
-	return string(s)
-}
-
-func ArgsHaveOption(long string, short string) (hasOption bool, foundAt int) {
-	for i, arg := range os.Args {
-		if arg == "--"+long || arg == "-"+short {
-			return true, i
-		}
-	}
-	return false, 0
-}
-
-// DuckToPrivateKey returns a deserialized base64 encoded private key
-func DuckToPrivateKey(duckkey string) (*ecdsa.PrivateKey, error) {
-	d, err := base64.StdEncoding.DecodeString(duckkey)
-	if err != nil {
-		return nil, err
-	}
-	p, err := x509.ParseECPrivateKey(d)
-	if err != nil {
-		return nil, err
-	}
-	return p, nil
-}
-
-// PublicKeytoduck returns a serialized public key as a base64 string
-func PublicKeytoduck(pubkey *ecdsa.PublicKey) (string, error) {
-	marshalled, err := x509.MarshalPKIXPublicKey(pubkey)
-	if err != nil {
-		return "", err
-	}
-	return B64(marshalled), nil
-}
-
-// B64 encodes a byte array to a base64 string
-func B64(data []byte) string {
-	return base64.StdEncoding.EncodeToString(data)
-}
-
-// PrivateKeytoduck returns a serialized private key as a base64 string
-func PrivateKeytoduck(privkey *ecdsa.PrivateKey) (string, error) {
-	marshalled, err := x509.MarshalECPrivateKey(privkey)
-	if err != nil {
-		return "", err
-	}
-	return B64(marshalled), nil
-}
-
-// DuckToAddress converts a Duckcoin public key to a Duckcoin address.
-func DuckToAddress(duckkey string) string {
-	hash := sha256.Sum256([]byte(duckkey))
-	return B64(hash[:])
-}
 
 // A Block represents a validated set of transactions with proof of work, which makes it really hard to rewrite the blockchain.
 type Block struct {
@@ -120,4 +46,127 @@ type Transaction struct {
 	//PubKey is the Duckcoin formatted public key of the sender
 	PubKey    string
 	Signature string
+}
+
+// CalculateHash calculates the hash of a Block.
+func CalculateHash(block Block) string {
+	block.Hash = ""
+	block.Tx.Signature = ""
+	return Shasum([]byte(ToJSON(block)))
+}
+
+// MakeSignature signs a message with a private key.
+func MakeSignature(privkey string, message string) (string, error) {
+	hash := sha256.Sum256([]byte(message))
+	key, err := DuckToPrivateKey(privkey)
+	if err != nil {
+		return "", err
+	}
+	data, err := ecdsa.SignASN1(rand.Reader, key, hash[:])
+	if err != nil {
+		return "", err
+	}
+	return B64(data), nil
+}
+
+// Shasum returns the sha256 hash of a byte slice
+func Shasum(record []byte) string {
+	h := sha256.New()
+	h.Write(record)
+	hashed := h.Sum(nil)
+	return hex.EncodeToString(hashed)
+}
+
+// IsHashSolution checks if a hash is a valid block hash using the global Difficulty
+func IsHashSolution(hash string, difficulty int) bool {
+	prefix := strings.Repeat("0", difficulty)
+	return strings.HasPrefix(hash, prefix)
+}
+
+// ToJSON is a convenience method for serializing to JSON
+func ToJSON(v interface{}) string {
+	s, _ := json.MarshalIndent(v, "", "   ")
+	return string(s)
+}
+
+func ArgsHaveOption(long string, short string) (hasOption bool, foundAt int) {
+	for i, arg := range os.Args {
+		if arg == "--"+long || arg == "-"+short {
+			return true, i
+		}
+	}
+	return false, 0
+}
+
+// PrivateKeytoDuck serializes private keys to a base64 string
+func PrivateKeytoDuck(privkey *ecdsa.PrivateKey) (string, error) {
+	marshalled, err := x509.MarshalECPrivateKey(privkey)
+	if err != nil {
+		return "", err
+	}
+	return B64(marshalled), nil
+}
+
+// DuckToPrivateKey deserializes private keys
+func DuckToPrivateKey(duckkey string) (*ecdsa.PrivateKey, error) {
+	d, err := base64.StdEncoding.DecodeString(duckkey)
+	if err != nil {
+		return nil, err
+	}
+	p, err := x509.ParseECPrivateKey(d)
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+// PublicKeytoDuck serializes public keys to a base64 string
+func PublicKeytoDuck(pubkey *ecdsa.PublicKey) (string, error) {
+	marshalled, err := x509.MarshalPKIXPublicKey(pubkey)
+	if err != nil {
+		return "", err
+	}
+	return B64(marshalled), nil
+}
+
+// DuckToPublicKey deserializes public keys
+func DuckToPublicKey(duckkey string) (*ecdsa.PublicKey, error) {
+	d, err := base64.StdEncoding.DecodeString(duckkey)
+	if err != nil {
+		return nil, err
+	}
+	p, err := x509.ParsePKIXPublicKey(d)
+	if err != nil {
+		return nil, err
+	}
+	pubkey, ok := p.(*ecdsa.PublicKey)
+	if !ok {
+		return nil, errors.New("pubkey is not of type *ecdsa.PublicKey")
+	}
+	return pubkey, nil
+}
+
+// B64 encodes a byte array to a base64 string
+func B64(data []byte) string {
+	return base64.StdEncoding.EncodeToString(data)
+}
+
+// DuckToAddress converts a Duckcoin public key to a Duckcoin address.
+func DuckToAddress(duckkey string) string {
+	hash := sha256.Sum256([]byte(duckkey))
+	return B64(hash[:])
+}
+
+// CheckSignature checks if signature decodes to message using pubkey. This is useful in verifying identities.
+func CheckSignature(signature string, pubkey string, message string) (bool, error) {
+	decodedSig, err := base64.StdEncoding.DecodeString(signature)
+	if err != nil {
+		return false, err
+	}
+	hash := sha256.Sum256([]byte(message))
+	key, err := DuckToPublicKey(pubkey)
+	if err != nil {
+		return false, err
+	}
+	return ecdsa.VerifyASN1(key, hash[:], decodedSig), nil
 }

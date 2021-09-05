@@ -5,7 +5,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
@@ -225,7 +224,7 @@ Mine:
 				fmt.Println("\nBlock made! It took", time.Since(t).Round(time.Second/100))
 				newBlock.Hash = util.CalculateHash(newBlock)
 				if newBlock.Tx.Amount != 0 {
-					signature, err := makeSignature(privkey, newBlock.Hash)
+					signature, err := util.MakeSignature(privkey, newBlock.Hash)
 					if err != nil {
 						fmt.Println(err)
 						return
@@ -265,11 +264,11 @@ func makeKeyPair() (pub string, priv string, err error) {
 		return "", "", err
 	}
 	pubkey := &privkey.PublicKey
-	pub, err = util.PublicKeytoduck(pubkey)
+	pub, err = util.PublicKeytoDuck(pubkey)
 	if err != nil {
 		return "", "", err
 	}
-	priv, err = util.PrivateKeytoduck(privkey)
+	priv, err = util.PrivateKeytoDuck(privkey)
 	if err != nil {
 		return "", "", err
 	}
@@ -324,18 +323,4 @@ func loadKeyPair(pubfile string, privfile string) (pub string, priv string, err 
 	privkey := base64.StdEncoding.EncodeToString(key.Bytes)
 	gchalk.BrightYellow("Loaded keys from " + pubfile + " and " + privfile)
 	return pubkey, privkey, nil
-}
-
-// makeSignature signs a message with a private key
-func makeSignature(privkey string, message string) (string, error) {
-	hash := sha256.Sum256([]byte(message))
-	key, err := util.DuckToPrivateKey(privkey)
-	if err != nil {
-		return "", err
-	}
-	data, err := ecdsa.SignASN1(rand.Reader, key, hash[:])
-	if err != nil {
-		return "", err
-	}
-	return util.B64(data), nil
 }
