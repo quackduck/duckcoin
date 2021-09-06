@@ -20,11 +20,13 @@ const (
 	BlockchainFile  = "blockchain.json"
 	NewestBlockFile = "newestblock.json"
 	BalancesFile    = "balances.json"
+	reward          = 1e6
+	duckToMicroDuck = 1e8
 )
 
 var (
 	NewestBlock util.Block
-	Balances    = make(map[string]int)
+	Balances    = make(map[string]int64)
 )
 
 func main() {
@@ -122,7 +124,7 @@ func main() {
 }
 
 func addBlockToChain(b util.Block) {
-	Balances[b.Solver] += 1
+	Balances[b.Solver] += reward
 	NewestBlock = b
 	if b.Tx.Amount != 0 {
 		Balances[b.Solver] -= b.Tx.Amount
@@ -188,8 +190,15 @@ func handleGetBlocks(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, f)
 	f.Close()
 }
+
 func handleGetBalances(w http.ResponseWriter, r *http.Request) {
-	bytes, err := json.MarshalIndent(Balances, "", "  ")
+	balancesNew := make(map[string]float64)
+
+	for address, balance := range Balances {
+		balancesNew[address] = float64(balance) / float64(duckToMicroDuck)
+	}
+
+	bytes, err := json.MarshalIndent(balancesNew, "", "  ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -275,7 +284,7 @@ func isValid(newBlock, oldBlock util.Block) error {
 			}
 		}
 		if newBlock.Tx.Sender == newBlock.Solver {
-			if Balances[newBlock.Tx.Sender]+1 < newBlock.Tx.Amount { // plus 1 because that's the reward
+			if Balances[newBlock.Tx.Sender]+reward < newBlock.Tx.Amount { // plus 1 because that's the reward
 				return errors.New("Insufficient balance")
 			}
 		} else {
