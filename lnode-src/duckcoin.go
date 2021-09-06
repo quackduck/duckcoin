@@ -21,7 +21,7 @@ const (
 	NewestBlockFile = "newestblock.json"
 	BalancesFile    = "balances.json"
 	reward          = 1e6
-	duckToMicroDuck = 1e8
+	duckToMicroquacks = 1e8
 )
 
 var (
@@ -195,7 +195,7 @@ func handleGetBalances(w http.ResponseWriter, r *http.Request) {
 	balancesNew := make(map[string]float64)
 
 	for address, balance := range Balances {
-		balancesNew[address] = float64(balance) / float64(duckToMicroDuck)
+		balancesNew[address] = float64(balance) / float64(duckToMicroquacks)
 	}
 
 	bytes, err := json.MarshalIndent(balancesNew, "", "  ")
