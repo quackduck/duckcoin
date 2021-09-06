@@ -42,7 +42,7 @@ type Transaction struct {
 	//Receiver is the address of the receiver.
 	Receiver string
 	//Amount is the amount to be payed by the Sender to the Receiver. It is always a positive number.
-	Amount int
+	Amount int64
 	//PubKey is the Duckcoin formatted public key of the sender
 	PubKey    string
 	Signature string
