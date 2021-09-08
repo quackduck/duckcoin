@@ -135,7 +135,7 @@ func mine(numOfBlocks int, data string, receiver string, amount int) {
 		_ = r.Body.Close()
 		go func() {
 			blockChan <- b
-			makeBlock(blockChan, privkey, "Mined by the official Duckcoin CLI User: "+username, address, util.Transaction{data, address, receiver, amount, pubkey, ""})
+			makeBlock(blockChan, privkey, "Mined by the official Duckcoin CLI User: "+username, address, util.Transaction{data, address, receiver, int64(amount), pubkey, ""})
 			doneChan <- true
 		}()
 
