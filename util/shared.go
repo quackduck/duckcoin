@@ -30,22 +30,22 @@ type Block struct {
 	// Solver is the public key of the sender
 	Solver string
 	// Transaction is the transaction associated with this block
-	Tx Transaction
+	Tx Transaction `json:",omitempty"`
 }
 
 // A Transaction is a transfer of any amount of duckcoin from one address to another.
 type Transaction struct {
 	// Data is any (arbitrary) additional data >= 250 kb long.
-	Data string
+	Data string `json:",omitempty"`
 	//Sender is the address of the sender.
-	Sender string
+	Sender string `json:",omitempty"`
 	//Receiver is the address of the receiver.
-	Receiver string
+	Receiver string `json:",omitempty"`
 	//Amount is the amount to be payed by the Sender to the Receiver. It is always a positive number.
-	Amount int64
+	Amount int64 `json:",omitempty"`
 	//PubKey is the Duckcoin formatted public key of the sender
-	PubKey    string
-	Signature string
+	PubKey    string `json:",omitempty"`
+	Signature string `json:",omitempty"`
 }
 
 // CalculateHash calculates the hash of a Block.
