@@ -42,12 +42,13 @@ Examples:
    duckcoin 4 # mines 4 blocks
    duckcoin 1 -t nSvl+K7RauJ5IagU+ID/slhDoR+435+NSLHOXzFBRmo= -a 3 -m "Payment of 3 Quacks to Ishan"`
 
-	amount          int
-	receiver        string
-	address         string
-	data            string
-	numOfBlocks     = math.MaxInt64
-	pubkey, privkey string
+	amount            int
+	receiver          string
+	address           string
+	data              string
+	numOfBlocks       = math.MaxInt64
+	pubkey, privkey   string
+	duckToMicroquacks = 1e7
 )
 
 func main() {
@@ -76,11 +77,16 @@ func main() {
 			fmt.Println("Too few arguments to --amount")
 			return
 		}
-		amount, err = strconv.Atoi(os.Args[i+1])
+		var preConvAmmount float64
+		preConvAmmount, err = strconv.ParseFloat(os.Args[i+1], 64)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
+
+		amount = int(preConvAmmount * duckToMicroquacks)
+
+		fmt.Println(amount)
 	}
 	if len(os.Args) > 1 {
 		i, err := strconv.Atoi(os.Args[1])
