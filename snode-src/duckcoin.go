@@ -35,7 +35,7 @@ var (
 	// Difficulty is how many zeros are needed in front of a block hash to be considred. a valid block. Thus, this controls how much work miners have to do.
 	Difficulty = 5
 	helpMsg    = `Duckcoin - quack money
-Usage: duckcoin [<num of blocks>] [-t/--to <pubkey>] [-a/--amount <quacks>] [-m/--message <msg>]
+Usage: duckcoin [<num of blocks>] [-t/--to <pubkey> -a/--amount <quacks> -m/--message <msg>]
 When run without arguments, Duckcoin mines Quacks to the key in ~/.config/duckcoin/pubkey.pem
 Examples:
    duckcoin
@@ -193,8 +193,9 @@ func makeBlock(blockChan chan util.Block, privkey string, data string, solver st
 
 	t := time.Now()
 Start:
+	hashingStartTime := time.Now()
 	newBlock.Index = oldBlock.Index + 1
-	newBlock.Timestamp = t.UnixNano() / 1000
+	newBlock.Timestamp = t.UnixNano() / 1000 // TODO: change this to millis (micros right now)
 	newBlock.Data = data
 	newBlock.PrevHash = oldBlock.Hash
 	newBlock.Solver = solver
@@ -217,7 +218,7 @@ Mine:
 			newBlock.Solution = strconv.Itoa(i)
 			if !util.IsHashSolution(util.CalculateHash(newBlock), Difficulty) {
 				if i&(1<<17-1) == 0 && i != 0 { // optimize to check every 131072 iterations (bitwise ops are faster)
-					fmt.Printf("Approx hashrate: %0.2f. Have checked %d hashes.\n", float64(i)/time.Since(t).Seconds(), i)
+					fmt.Printf("Approx hashrate: %0.2f. Have checked %d hashes.\n", float64(i)/time.Since(hashingStartTime).Seconds(), i)
 				}
 				continue
 			} else {
@@ -302,7 +303,7 @@ func saveKeyPair(pubkey string, privkey string, pubfile string, privfile string)
 }
 
 func loadKeyPair(pubfile string, privfile string) (pub string, priv string, err error) {
-	// see comment in saveKeyPair for why the keys are base64 encoded before passed to duckTo*Key
+	// see comment in util.SaveKeyPair for why the keys are base64 encoded before returning
 	data, err := ioutil.ReadFile(pubfile)
 	if err != nil {
 		return "", "", err
