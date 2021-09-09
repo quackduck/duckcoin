@@ -48,7 +48,7 @@ Examples:
 	data              string
 	numOfBlocks       = math.MaxInt64
 	pubkey, privkey   string
-	duckToMicroquacks = 1e7
+	duckToMicroquacks = 1e8
 )
 
 func main() {
@@ -77,16 +77,13 @@ func main() {
 			fmt.Println("Too few arguments to --amount")
 			return
 		}
-		var preConvAmmount float64
-		preConvAmmount, err = strconv.ParseFloat(os.Args[i+1], 64)
+		var ducks float64
+		ducks, err = strconv.ParseFloat(os.Args[i+1], 64)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-
-		amount = int(preConvAmmount * duckToMicroquacks)
-
-		fmt.Println(amount)
+		amount = int(ducks * duckToMicroquacks)
 	}
 	if len(os.Args) > 1 {
 		i, err := strconv.Atoi(os.Args[1])
