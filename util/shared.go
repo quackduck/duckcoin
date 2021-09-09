@@ -93,7 +93,7 @@ func ToJSON(v interface{}) string {
 	return string(s)
 }
 
-// ArgsHaveOption checks if a given arg sting contains an option
+// ArgsHaveOption checks command line arguments for an option
 func ArgsHaveOption(long string, short string) (hasOption bool, foundAt int) {
 	for i, arg := range os.Args {
 		if arg == "--"+long || arg == "-"+short {
