@@ -42,7 +42,7 @@ Examples:
    duckcoin 4 # mines 4 blocks
    duckcoin 1 -t nSvl+K7RauJ5IagU+ID/slhDoR+435+NSLHOXzFBRmo= -a 3 -m "Payment of 3 Quacks to Ishan"`
 
-	amount            int
+	amount            int64
 	receiver          string
 	address           string
 	data              string
@@ -83,7 +83,7 @@ func main() {
 			fmt.Println(err)
 			return
 		}
-		amount = int(ducks * duckToMicroquacks)
+		amount = int64(ducks * duckToMicroquacks)
 	}
 	if len(os.Args) > 1 {
 		i, err := strconv.Atoi(os.Args[1])
@@ -115,7 +115,7 @@ func main() {
 		}
 	}
 	address = util.DuckToAddress(pubkey)
-	fmt.Printf("Mining to this address: %s\n", gchalk.BrightBlue(address))
+	fmt.Println("Mining to this address: ", gchalk.BrightBlue(address))
 
 	loadDifficultyAndURL()
 
@@ -123,7 +123,7 @@ func main() {
 }
 
 // mine mines numOfBlocks blocks, with the arbitrary data field set to data. It also takes in the receiver's address and amount to send in each block, if the block should contain a transaction.
-func mine(numOfBlocks int, data string, receiver string, amount int) {
+func mine(numOfBlocks int, data string, receiver string, amount int64) {
 	var i int
 	var b util.Block
 	for ; i < numOfBlocks; i++ {
@@ -138,7 +138,11 @@ func mine(numOfBlocks int, data string, receiver string, amount int) {
 		_ = r.Body.Close()
 		go func() {
 			blockChan <- b
-			makeBlock(blockChan, privkey, "Mined by the official Duckcoin CLI User: "+username, address, util.Transaction{data, address, receiver, int64(amount), pubkey, ""})
+			makeBlock(
+				blockChan, privkey, "Mined by the official Duckcoin CLI User: "+username, address,
+				util.Transaction{
+					data, address, receiver, amount, pubkey, "", // Signature filled in by the makeBlock function
+				})
 			doneChan <- true
 		}()
 
@@ -174,7 +178,7 @@ func mine(numOfBlocks int, data string, receiver string, amount int) {
 func loadDifficultyAndURL() {
 	data, err := ioutil.ReadFile(urlFile)
 	if err != nil {
-		ioutil.WriteFile(urlFile, []byte(url), 0644)
+		_ = ioutil.WriteFile(urlFile, []byte(url), 0644)
 		return
 	}
 	url = strings.TrimSpace(string(data))
@@ -195,10 +199,10 @@ func makeBlock(blockChan chan util.Block, privkey string, data string, solver st
 	var newBlock util.Block
 
 	t := time.Now()
+	newBlock.Timestamp = t.UnixNano() / 1e6 // convert to millis
+
 Start:
-	hashingStartTime := time.Now()
 	newBlock.Index = oldBlock.Index + 1
-	newBlock.Timestamp = t.UnixNano() / 1000 // TODO: change this to millis (micros right now)
 	newBlock.Data = data
 	newBlock.PrevHash = oldBlock.Hash
 	newBlock.Solver = solver
@@ -209,8 +213,11 @@ Start:
 		newBlock.Tx.PubKey = ""
 		newBlock.Tx.Signature = ""
 	}
+
+	hashrateStartTime := time.Now()
+	var i int64
 Mine:
-	for i := 0; ; i++ {
+	for i = 0; ; i++ {
 		select {
 		case b := <-blockChan:
 			if oldBlock != b {
@@ -218,11 +225,11 @@ Mine:
 				goto Start
 			}
 		default:
-			newBlock.Solution = strconv.Itoa(i)
+			newBlock.Solution = strconv.FormatInt(i, 10)
+			if i&(1<<17-1) == 0 && i != 0 { // optimize to check every 131072 iterations (bitwise ops are faster)
+				fmt.Printf("Approx hashrate: %0.2f. Have checked %d hashes.\n", float64(i)/time.Since(hashrateStartTime).Seconds(), i)
+			}
 			if !util.IsHashSolution(util.CalculateHash(newBlock), Difficulty) {
-				if i&(1<<17-1) == 0 && i != 0 { // optimize to check every 131072 iterations (bitwise ops are faster)
-					fmt.Printf("Approx hashrate: %0.2f. Have checked %d hashes.\n", float64(i)/time.Since(hashingStartTime).Seconds(), i)
-				}
 				continue
 			} else {
 				fmt.Println("\nBlock made! It took", time.Since(t).Round(time.Second/100))
@@ -252,7 +259,7 @@ Mine:
 					return
 				}
 				fmt.Println("Server returned", gchalk.BrightGreen(string(resp)))
-				r.Body.Close()
+				_ = r.Body.Close()
 				break Mine
 			}
 		}
