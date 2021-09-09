@@ -290,7 +290,7 @@ func makeKeyPair() (pub string, priv string, err error) {
 }
 
 func loadKeyPair(pubfile string, privfile string) (pub string, priv string, err error) {
-	// see comment in util.util.SaveKeyPair for why the keys are base64 encoded before returning
+	// see comment in util.SaveKeyPair for why the keys are base64 encoded before returning
 	data, err := ioutil.ReadFile(pubfile)
 	if err != nil {
 		return "", "", err
