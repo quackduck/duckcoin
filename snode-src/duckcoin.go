@@ -108,7 +108,7 @@ func main() {
 			fmt.Println(err)
 			return
 		}
-		err = saveKeyPair(pubkey, privkey, pubkeyFile, privkeyFile)
+		err = util.SaveKeyPair(pubkey, privkey, pubkeyFile, privkeyFile)
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -286,34 +286,8 @@ func makeKeyPair() (pub string, priv string, err error) {
 	return pub, priv, nil
 }
 
-// saveKeyPair saves a key pair to a file using the PEM format
-func saveKeyPair(pubkey string, privkey string, pubfile string, privfile string) error {
-	// saveKeyPair decodes the keys because PEM base64s them too, and decoding means that the pubkey in duck format is the same as the data in the PEM file. (which is nice but an arbitrary decision)
-	d, _ := base64.StdEncoding.DecodeString(privkey)
-	b := pem.EncodeToMemory(&pem.Block{
-		Type:  "DUCKCOIN (ECDSA) PRIVATE KEY",
-		Bytes: d,
-	})
-	if err := ioutil.WriteFile(privfile, b, 0600); err != nil {
-		return err
-	}
-
-	d, _ = base64.StdEncoding.DecodeString(pubkey)
-	b = pem.EncodeToMemory(&pem.Block{
-		Type:  "DUCKCOIN (ECDSA) PUBLIC KEY",
-		Bytes: d,
-	})
-	if err := ioutil.WriteFile(pubfile, b, 0644); err != nil {
-		return err
-	}
-
-	gchalk.BrightYellow("Your keys have been saved to " + pubfile + "(pubkey) and " + privfile + " (privkey)")
-	gchalk.BrightRed("Do not tell anyone what's inside " + privfile)
-	return nil
-}
-
 func loadKeyPair(pubfile string, privfile string) (pub string, priv string, err error) {
-	// see comment in util.SaveKeyPair for why the keys are base64 encoded before returning
+	// see comment in util.util.SaveKeyPair for why the keys are base64 encoded before returning
 	data, err := ioutil.ReadFile(pubfile)
 	if err != nil {
 		return "", "", err
