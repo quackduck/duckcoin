@@ -42,7 +42,7 @@ type Transaction struct {
 	//Receiver is the address of the receiver.
 	Receiver string `json:",omitempty"`
 	//Amount is the amount to be payed by the Sender to the Receiver. It is always a positive number.
-	Amount int `json:",omitempty"`
+	Amount int64 `json:",omitempty"`
 	//PubKey is the Duckcoin formatted public key of the sender
 	PubKey    string `json:",omitempty"`
 	Signature string `json:",omitempty"`
