@@ -8,9 +8,13 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
+	"io/ioutil"
 	"os"
 	"strings"
+
+	"github.com/jwalton/gchalk" // color library
 )
 
 // A Block represents a validated set of transactions with proof of work, which makes it really hard to rewrite the blockchain.
@@ -89,6 +93,7 @@ func ToJSON(v interface{}) string {
 	return string(s)
 }
 
+// ArgsHaveOption checks command line arguments for an option
 func ArgsHaveOption(long string, short string) (hasOption bool, foundAt int) {
 	for i, arg := range os.Args {
 		if arg == "--"+long || arg == "-"+short {
@@ -169,4 +174,28 @@ func CheckSignature(signature string, pubkey string, message string) (bool, erro
 		return false, err
 	}
 	return ecdsa.VerifyASN1(key, hash[:], decodedSig), nil
+}
+
+// SaveKeyPair saves a key pair to a file using the PEM format
+func SaveKeyPair(pubkey string, privkey string, pubfile string, privfile string) error {
+	// saveKeyPair decodes the keys because PEM base64s them too, and decoding means that the pubkey in duck format is the same as the data in the PEM file. (which is nice but an arbitrary decision)
+	d, _ := base64.StdEncoding.DecodeString(privkey)
+	b := pem.EncodeToMemory(&pem.Block{
+		Type:  "DUCKCOIN (ECDSA) PRIVATE KEY",
+		Bytes: d,
+	})
+	if err := ioutil.WriteFile(privfile, b, 0600); err != nil {
+		return err
+	}
+
+	d, _ = base64.StdEncoding.DecodeString(pubkey)
+	b = pem.EncodeToMemory(&pem.Block{
+		Type:  "DUCKCOIN (ECDSA) PUBLIC KEY",
+		Bytes: d,
+	})
+	if err := ioutil.WriteFile(pubfile, b, 0644); err != nil {
+		return err
+	}
+	
+	return nil
 }
