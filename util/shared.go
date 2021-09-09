@@ -93,6 +93,7 @@ func ToJSON(v interface{}) string {
 	return string(s)
 }
 
+// ArgsHaveOption checks if a given arg sting contains an option
 func ArgsHaveOption(long string, short string) (hasOption bool, foundAt int) {
 	for i, arg := range os.Args {
 		if arg == "--"+long || arg == "-"+short {
@@ -195,8 +196,6 @@ func SaveKeyPair(pubkey string, privkey string, pubfile string, privfile string)
 	if err := ioutil.WriteFile(pubfile, b, 0644); err != nil {
 		return err
 	}
-
-	gchalk.BrightYellow("Your keys have been saved to " + pubfile + "(pubkey) and " + privfile + " (privkey)")
-	gchalk.BrightRed("Do not tell anyone what's inside " + privfile)
+	
 	return nil
 }

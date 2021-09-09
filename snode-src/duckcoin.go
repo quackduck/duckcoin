@@ -113,6 +113,9 @@ func main() {
 			fmt.Println(err)
 			return
 		}
+		
+		gchalk.BrightYellow("Your keys have been saved to " + pubfile + "(pubkey) and " + privfile + " (privkey)")
+		gchalk.BrightRed("Do not tell anyone what's inside " + privfile)
 	}
 	address = util.DuckToAddress(pubkey)
 	fmt.Println("Mining to this address: ", gchalk.BrightBlue(address))
