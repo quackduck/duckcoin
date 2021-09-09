@@ -16,11 +16,11 @@ import (
 )
 
 const (
-	Difficulty      = 5 // this should change based on time taken by each block
-	BlockchainFile  = "blockchain.json"
-	NewestBlockFile = "newestblock.json"
-	BalancesFile    = "balances.json"
-	reward          = 1e6
+	Difficulty        = 5 // this should change based on time taken by each block
+	BlockchainFile    = "blockchain.json"
+	NewestBlockFile   = "newestblock.json"
+	BalancesFile      = "balances.json"
+	reward            = 1e6
 	duckToMicroquacks = 1e8
 )
 
@@ -126,9 +126,11 @@ func main() {
 func addBlockToChain(b util.Block) {
 	Balances[b.Solver] += reward
 	NewestBlock = b
-	if b.Tx.Amount != 0 {
+	if b.Tx.Amount > 0 {
+		Balances[b.Solver] -= reward // no reward for a transaction block so we can give that reward to the lnodes (TODO).
 		Balances[b.Solver] -= b.Tx.Amount
 		Balances[b.Tx.Receiver] += b.Tx.Amount
+
 	}
 
 	err := truncateFile(BlockchainFile, 2) // remove the last two parts (the bracket and the newline)
@@ -284,7 +286,7 @@ func isValid(newBlock, oldBlock util.Block) error {
 			}
 		}
 		if newBlock.Tx.Sender == newBlock.Solver {
-			if Balances[newBlock.Tx.Sender]+reward < newBlock.Tx.Amount { // plus 1 because that's the reward
+			if Balances[newBlock.Tx.Sender] < newBlock.Tx.Amount { // notice that there is no reward for this block's PoW added to the sender's account first
 				return errors.New("Insufficient balance")
 			}
 		} else {
