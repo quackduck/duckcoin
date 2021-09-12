@@ -64,6 +64,11 @@ func main() {
 			return
 		}
 		receiver = os.Args[i+1]
+
+		if !util.IsValidBase64(receiver) || len(receiver) != 44 {
+			fmt.Println(“error: invalid receiver address")
+			return
+		}
 	}
 	if ok, i := util.ArgsHaveOption("message", "m"); ok {
 		if len(os.Args) < i+2 {
@@ -113,9 +118,9 @@ func main() {
 			fmt.Println(err)
 			return
 		}
-		
-		gchalk.BrightYellow("Your keys have been saved to " + pubfile + "(pubkey) and " + privfile + " (privkey)")
-		gchalk.BrightRed("Do not tell anyone what's inside " + privfile)
+
+		gchalk.BrightYellow("Your keys have been saved to " + pubkeyFile + "(pubkey) and " + privkeyFile + " (privkey)")
+		gchalk.BrightRed("Do not tell anyone what's inside " + privkeyFile)
 	}
 	address = util.DuckToAddress(pubkey)
 	fmt.Println("Mining to this address: ", gchalk.BrightBlue(address))
