@@ -66,7 +66,7 @@ func main() {
 		receiver = os.Args[i+1]
 
 		if !util.IsValidBase64(receiver) || len(receiver) != 44 {
-			fmt.Println("You are sending money to an invalid address!")
+			fmt.Println(“error: invalid receiver address")
 			return
 		}
 	}
