@@ -13,8 +13,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
-
-	"github.com/jwalton/gchalk" // color library
+	// color library
 )
 
 // A Block represents a validated set of transactions with proof of work, which makes it really hard to rewrite the blockchain.
@@ -196,6 +195,11 @@ func SaveKeyPair(pubkey string, privkey string, pubfile string, privfile string)
 	if err := ioutil.WriteFile(pubfile, b, 0644); err != nil {
 		return err
 	}
-	
+
 	return nil
+}
+
+func IsValidBase64(s string) bool {
+	_, err := base64.StdEncoding.DecodeString(s)
+	return err == nil
 }
