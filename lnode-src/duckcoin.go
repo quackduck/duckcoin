@@ -16,87 +16,48 @@ import (
 )
 
 const (
-	Difficulty        = 5 // this should change based on time taken by each block
-	BlockchainFile    = "blockchain.json"
-	NewestBlockFile   = "newestblock.json"
-	BalancesFile      = "balances.json"
-	reward            = 1e6
-	duckToMicroquacks = 1e8
+	BlockchainFile        = "blockchain.json"
+	NewestBlockFile       = "newestblock.json"
+	BalancesFile          = "balances.json"
+	Reward          int64 = 1e6
 )
 
 var (
+	Difficulty  = 5 // this should change based on time taken by each block
 	NewestBlock util.Block
 	Balances    = make(map[string]int64)
 )
 
 func main() {
 	if !fileExists(BlockchainFile) {
-		t := time.Now() // genesis time
-		genesisBlock := util.Block{
-			Index:     0,
-			Timestamp: t.Unix(),
-			Data:      "Genesis block. Thank you so much to Jason Antwi-Appah for the incredible name that is Duckcoin. QUACK!",
-			Hash:      "",
-			PrevHash:  "🐤",
-			Solution:  "Go Gophers and DUCKS! github.com/quackduck",
-			Solver:    "Ishan Goel (quackduck on GitHub)",
-			Tx: util.Transaction{
-				Data: "Genesis transaction",
-			},
-		}
-
-		genesisBlock.Hash = util.CalculateHash(genesisBlock)
-		fmt.Println(util.ToJSON(genesisBlock))
-		f, _ := os.Create(BlockchainFile)
-		f.Write([]byte(util.ToJSON([]util.Block{genesisBlock})))
-		f.Close()
-		NewestBlock = genesisBlock
-		err := ioutil.WriteFile(NewestBlockFile, []byte(util.ToJSON(NewestBlock)), 0755)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		err = ioutil.WriteFile(BalancesFile, []byte(util.ToJSON(Balances)), 0755)
-		if err != nil {
-			fmt.Println(err)
+		if err := setupNewBlockchain(); err != nil {
+			fmt.Println("error: ", err)
 			return
 		}
 	} else {
-		b, err := ioutil.ReadFile(NewestBlockFile)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		err = json.Unmarshal(b, &NewestBlock)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		b, err = ioutil.ReadFile(BalancesFile)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		err = json.Unmarshal(b, &Balances)
-		if err != nil {
-			fmt.Println(err)
+		if err := setup(); err != nil {
+			fmt.Println("error: ", err)
 			return
 		}
 	}
-	mux := mux.NewRouter()
-	mux.HandleFunc("/blocks", handleGetBlocks).Methods("GET")
-	mux.HandleFunc("/balances", handleGetBalances).Methods("GET")
-	mux.HandleFunc("/blocks/new", handleWriteBlock).Methods("POST")
-	mux.HandleFunc("/blocks/newest", handleGetNewest).Methods("GET")
+	m := mux.NewRouter()
+	m.HandleFunc("/blocks", handleGetBlocks).Methods("GET")
+	m.HandleFunc("/balances", handleGetBalances).Methods("GET")
+	m.HandleFunc("/blocks/new", handleWriteBlock).Methods("POST")
+	m.HandleFunc("/blocks/newest", handleGetNewest).Methods("GET")
 
-	mux.HandleFunc("/difficulty", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(strconv.Itoa(Difficulty)))
+	m.HandleFunc("/difficulty", func(w http.ResponseWriter, r *http.Request) {
+		_, err := w.Write([]byte(strconv.Itoa(Difficulty)))
+		if err != nil {
+			fmt.Println("error: ", err)
+			return
+		}
 	}).Methods("GET")
 
 	go func() {
 		s := &http.Server{
 			Addr:           "0.0.0.0:80",
-			Handler:        mux,
+			Handler:        m,
 			ReadTimeout:    10 * time.Second,
 			WriteTimeout:   10 * time.Second,
 			MaxHeaderBytes: 1 << 20,
@@ -106,12 +67,11 @@ func main() {
 			return
 		}
 	}()
-	httpPort := "8080"
 
-	fmt.Println("HTTP Server Listening on port:", httpPort)
+	fmt.Println("HTTP Server Listening on port 8080")
 	s := &http.Server{
-		Addr:           "0.0.0.0:" + httpPort,
-		Handler:        mux,
+		Addr:           "0.0.0.0:8080",
+		Handler:        m,
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
 		MaxHeaderBytes: 1 << 20,
@@ -120,17 +80,81 @@ func main() {
 		fmt.Println(err)
 		return
 	}
+}
 
+func setup() error {
+	b, err := ioutil.ReadFile(NewestBlockFile)
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(b, &NewestBlock)
+	if err != nil {
+		return err
+	}
+	b, err = ioutil.ReadFile(BalancesFile)
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(b, &Balances)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func setupNewBlockchain() error {
+	t := time.Now() // genesis time
+	genesisBlock := util.Block{
+		Index:     0,
+		Timestamp: t.Unix(),
+		Data:      "Genesis block. Thank you so much to Jason Antwi-Appah for the incredible name that is Duckcoin. QUACK!",
+		Hash:      "",
+		PrevHash:  "🐤",
+		Solution:  "Go Gophers and DUCKS! github.com/quackduck",
+		Solver:    "Ishan Goel (quackduck on GitHub)",
+		Tx: util.Transaction{
+			Data: "Genesis transaction",
+		},
+	}
+
+	genesisBlock.Hash = util.CalculateHash(genesisBlock)
+	fmt.Println(util.ToJSON(genesisBlock))
+	f, err := os.Create(BlockchainFile)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write([]byte(util.ToJSON([]util.Block{genesisBlock})))
+	if err != nil {
+		return err
+	}
+	err = f.Close()
+	if err != nil {
+		return err
+	}
+
+	NewestBlock = genesisBlock
+	err = ioutil.WriteFile(NewestBlockFile, []byte(util.ToJSON(NewestBlock)), 0755)
+	if err != nil {
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	err = ioutil.WriteFile(BalancesFile, []byte(util.ToJSON(Balances)), 0755)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func addBlockToChain(b util.Block) {
-	Balances[b.Solver] += reward
+	Balances[b.Solver] += Reward
 	NewestBlock = b
 	if b.Tx.Amount > 0 {
-		Balances[b.Solver] -= reward // no reward for a transaction block so we can give that reward to the lnodes (TODO).
+		Balances[b.Solver] -= Reward // no reward for a transaction block so we can give that reward to the lnodes (TODO).
+
 		Balances[b.Solver] -= b.Tx.Amount
 		Balances[b.Tx.Receiver] += b.Tx.Amount
-
 	}
 
 	err := truncateFile(BlockchainFile, 2) // remove the last two parts (the bracket and the newline)
@@ -152,7 +176,11 @@ func addBlockToChain(b util.Block) {
 	if err != nil {
 		fmt.Println("Could not write to", BlockchainFile)
 	}
-	f.Close()
+	err = f.Close()
+	if err != nil {
+		fmt.Println("error: ", err)
+		return
+	}
 
 	err = ioutil.WriteFile(NewestBlockFile, []byte(util.ToJSON(b)), 0755)
 	if err != nil {
@@ -183,21 +211,25 @@ func truncateFile(name string, bytesToRemove int64) error {
 	return os.Truncate(name, fi.Size()-bytesToRemove)
 }
 
-func handleGetBlocks(w http.ResponseWriter, r *http.Request) {
+func handleGetBlocks(w http.ResponseWriter, _ *http.Request) {
 	f, err := os.Open(BlockchainFile)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	io.Copy(w, f)
-	f.Close()
+	_, err = io.Copy(w, f)
+	if err != nil {
+		fmt.Println("error: ", err)
+		return
+	}
+	_ = f.Close()
 }
 
-func handleGetBalances(w http.ResponseWriter, r *http.Request) {
+func handleGetBalances(w http.ResponseWriter, _ *http.Request) {
 	balancesNew := make(map[string]float64)
 
 	for address, balance := range Balances {
-		balancesNew[address] = float64(balance) / float64(duckToMicroquacks)
+		balancesNew[address] = float64(balance) / float64(util.MicroquacksPerDuck)
 	}
 
 	bytes, err := json.MarshalIndent(balancesNew, "", "  ")
@@ -205,16 +237,26 @@ func handleGetBalances(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Write(bytes)
+	_, err = w.Write(bytes)
+	if err != nil {
+		fmt.Println("error: ", err)
+		return
+	}
 }
-func handleGetNewest(w http.ResponseWriter, r *http.Request) {
+
+func handleGetNewest(w http.ResponseWriter, _ *http.Request) {
 	bytes, err := json.MarshalIndent(NewestBlock, "", "  ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Write(bytes)
+	_, err = w.Write(bytes)
+	if err != nil {
+		fmt.Println("error: ", err)
+		return
+	}
 }
+
 func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var b util.Block
@@ -237,16 +279,25 @@ func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 	}
 	respondWithJSON(w, http.StatusCreated, "Block accepted.")
 }
+
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	response, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("HTTP 500: Internal Server Error: " + err.Error()))
+		_, err = w.Write([]byte("HTTP 500: Internal Server Error: " + err.Error()))
+		if err != nil {
+			fmt.Println("error: ", err)
+			return
+		}
 		return
 	}
 	w.WriteHeader(code)
-	w.Write(response)
+	_, err = w.Write(response)
+	if err != nil {
+		fmt.Println("error: ", err)
+		return
+	}
 }
 
 func isValid(newBlock, oldBlock util.Block) error {
