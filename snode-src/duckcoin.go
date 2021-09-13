@@ -24,38 +24,41 @@ import (
 )
 
 var (
-	url         = "http://devzat.hackclub.com:8080"
-	home, _     = os.UserHomeDir()
-	u, _        = user.Current()
-	username    = u.Name
-	configDir   = home + "/.config/duckcoin"
-	pubkeyFile  = configDir + "/pubkey.pem"
-	privkeyFile = configDir + "/privkey.pem"
-	urlFile     = configDir + "/url.txt"
+	URL         = "http://devzat.hackclub.com:8080"
+	Home, _     = os.UserHomeDir()
+	U, _        = user.Current()
+	Username    = U.Name
+	ConfigDir   = Home + "/.config/duckcoin"
+	PubkeyFile  = ConfigDir + "/pubkey.pem"
+	PrivkeyFile = ConfigDir + "/privkey.pem"
+	URLFile     = ConfigDir + "/url.txt"
+
 	// Difficulty is how many zeros are needed in front of a block hash to be considred. a valid block. Thus, this controls how much work miners have to do.
 	Difficulty = 5
-	helpMsg    = `Duckcoin - quack money
+
+	HelpMsg = `Duckcoin - quack money
 Usage: duckcoin [<num of blocks>] [-t/--to <pubkey> -a/--amount <quacks> -m/--message <msg>]
 When run without arguments, Duckcoin mines Quacks to the key in ~/.config/duckcoin/pubkey.pem
 Examples:
    duckcoin
    duckcoin 4 # mines 4 blocks
    duckcoin 1 -t nSvl+K7RauJ5IagU+ID/slhDoR+435+NSLHOXzFBRmo= -a 3 -m "Payment of 3 Quacks to Ishan"`
-
-	amount            int64
-	receiver          string
-	address           string
-	data              string
-	numOfBlocks       = math.MaxInt64
-	pubkey, privkey   string
-	duckToMicroquacks = 1e8
 )
 
 func main() {
 	var err error
 
+	var (
+		amount          int64
+		receiver        string
+		address         string
+		data            string
+		numOfBlocks     int64 = math.MaxInt64
+		pubkey, privkey string
+	)
+
 	if ok, _ := util.ArgsHaveOption("help", "h"); ok {
-		fmt.Println(helpMsg)
+		fmt.Println(HelpMsg)
 		return
 	}
 	if ok, i := util.ArgsHaveOption("to", "t"); ok {
@@ -66,7 +69,7 @@ func main() {
 		receiver = os.Args[i+1]
 
 		if !util.IsValidBase64(receiver) || len(receiver) != 44 {
-			fmt.Println(“error: invalid receiver address")
+			fmt.Println("error: invalid receiver address")
 			return
 		}
 	}
@@ -88,10 +91,10 @@ func main() {
 			fmt.Println(err)
 			return
 		}
-		amount = int64(ducks * duckToMicroquacks)
+		amount = int64(ducks * float64(util.MicroquacksPerDuck))
 	}
 	if len(os.Args) > 1 {
-		i, err := strconv.Atoi(os.Args[1])
+		i, err := strconv.ParseInt(os.Args[1], 10, 64)
 		if err == nil {
 			numOfBlocks = i
 		} else {
@@ -100,12 +103,12 @@ func main() {
 		}
 	}
 
-	err = os.MkdirAll(configDir, 0700)
+	err = os.MkdirAll(ConfigDir, 0700)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	pubkey, privkey, err = loadKeyPair(pubkeyFile, privkeyFile)
+	pubkey, privkey, err = loadKeyPair(PubkeyFile, PrivkeyFile)
 	if err != nil {
 		fmt.Println("Making you a fresh, new key pair and address!")
 		pubkey, privkey, err = makeKeyPair()
@@ -113,31 +116,33 @@ func main() {
 			fmt.Println(err)
 			return
 		}
-		err = util.SaveKeyPair(pubkey, privkey, pubkeyFile, privkeyFile)
+		err = util.SaveKeyPair(pubkey, privkey, PubkeyFile, PrivkeyFile)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-
-		gchalk.BrightYellow("Your keys have been saved to " + pubkeyFile + "(pubkey) and " + privkeyFile + " (privkey)")
-		gchalk.BrightRed("Do not tell anyone what's inside " + privkeyFile)
+		gchalk.BrightYellow("Your keys have been saved to " + PubkeyFile + "(pubkey) and " + PrivkeyFile + " (privkey)")
+		gchalk.BrightRed("Do not tell anyone what's inside " + PrivkeyFile)
 	}
 	address = util.DuckToAddress(pubkey)
 	fmt.Println("Mining to this address: ", gchalk.BrightBlue(address))
 
 	loadDifficultyAndURL()
 
-	mine(numOfBlocks, data, receiver, amount)
+	mine(amount, numOfBlocks, receiver, address, data, privkey, pubkey)
 }
 
-// mine mines numOfBlocks blocks, with the arbitrary data field set to data. It also takes in the receiver's address and amount to send in each block, if the block should contain a transaction.
-func mine(numOfBlocks int, data string, receiver string, amount int64) {
-	var i int
+// mine mines numOfBlocks blocks, with the Transaction's arbitrary data field set to data if amount is not 0.
+// It also takes in the receiver's address and amount to send in each block, if amount is not 0
+//
+// mine also uses the global variables pubkey, privkey and address
+func mine(amount, numOfBlocks int64, receiver, address, data, privkey, pubkey string) {
+	var i int64
 	var b util.Block
 	for ; i < numOfBlocks; i++ {
 		doneChan := make(chan interface{}, 1)
 		blockChan := make(chan util.Block, 1)
-		r, err := http.Get(url + "/blocks/newest")
+		r, err := http.Get(URL + "/blocks/newest")
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -146,11 +151,18 @@ func mine(numOfBlocks int, data string, receiver string, amount int64) {
 		_ = r.Body.Close()
 		go func() {
 			blockChan <- b
+
 			makeBlock(
-				blockChan, privkey, "Mined by the official Duckcoin CLI User: "+username, address,
+				blockChan, privkey, "Mined by the official Duckcoin CLI User: "+Username, address,
 				util.Transaction{
-					data, address, receiver, amount, pubkey, "", // Signature filled in by the makeBlock function
+					Data:      data,
+					Sender:    address,
+					Receiver:  receiver,
+					Amount:    amount,
+					PubKey:    pubkey,
+					Signature: "", // Signature filled in by the makeBlock function
 				})
+
 			doneChan <- true
 		}()
 
@@ -162,7 +174,7 @@ func mine(numOfBlocks int, data string, receiver string, amount int64) {
 				break Monitor
 			default:
 				c := time.After(time.Second / 2)
-				r, err := http.Get(url + "/blocks/newest")
+				r, err := http.Get(URL + "/blocks/newest")
 				if err != nil {
 					fmt.Println(err)
 					return
@@ -184,14 +196,14 @@ func mine(numOfBlocks int, data string, receiver string, amount int64) {
 
 // loadDifficultyAndURL loads the server URL from the config file, and then loads the difficulty by contacting that server.
 func loadDifficultyAndURL() {
-	data, err := ioutil.ReadFile(urlFile)
+	data, err := ioutil.ReadFile(URLFile)
 	if err != nil {
-		_ = ioutil.WriteFile(urlFile, []byte(url), 0644)
+		_ = ioutil.WriteFile(URLFile, []byte(URL), 0644)
 		return
 	}
-	url = strings.TrimSpace(string(data))
+	URL = strings.TrimSpace(string(data))
 
-	r, err := http.Get(url + "/difficulty")
+	r, err := http.Get(URL + "/difficulty")
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -200,7 +212,12 @@ func loadDifficultyAndURL() {
 	_ = r.Body.Close()
 }
 
-// makeBlock creates one new block by accepting the last block on blockChan, and restarting mining in case a new block is sent. It takes in the user's private key to be used in signing tx, the transaction, if tx.Amount is not 0. It also takes in the arbitrary data to be included in the block and the user's address (solver).
+// makeBlock creates one new block by accepting a block sent on blockChan as the latest block,
+// and restarting mining in case a new block is sent on blockChan.
+// It takes in the user's private key to be used in signing tx, the transaction, if tx.Amount is not 0.
+// It also takes in the arbitrary data to be included in the block and the user's address (solver).
+//
+// makeBlock also fills in the Transaction's Signature field and the Block's Hash field
 func makeBlock(blockChan chan util.Block, privkey string, data string, solver string, tx util.Transaction) {
 	oldBlock := <-blockChan
 
@@ -222,7 +239,7 @@ Start:
 		newBlock.Tx.Signature = ""
 	}
 
-	hashrateStartTime := time.Now()
+	hashRateStartTime := time.Now()
 	var i int64
 Mine:
 	for i = 0; ; i++ {
@@ -235,7 +252,7 @@ Mine:
 		default:
 			newBlock.Solution = strconv.FormatInt(i, 10)
 			if i&(1<<17-1) == 0 && i != 0 { // optimize to check every 131072 iterations (bitwise ops are faster)
-				fmt.Printf("Approx hashrate: %0.2f. Have checked %d hashes.\n", float64(i)/time.Since(hashrateStartTime).Seconds(), i)
+				fmt.Printf("Approx hashrate: %0.2f. Have checked %d hashes.\n", float64(i)/time.Since(hashRateStartTime).Seconds(), i)
 			}
 			if !util.IsHashSolution(util.CalculateHash(newBlock), Difficulty) {
 				continue
@@ -255,7 +272,7 @@ Mine:
 				if jerr != nil {
 					fmt.Println(jerr)
 				}
-				r, err := http.Post(url+"/blocks/new", "application/json", bytes.NewReader(j))
+				r, err := http.Post(URL+"/blocks/new", "application/json", bytes.NewReader(j))
 				if err != nil {
 					fmt.Println(err)
 					return

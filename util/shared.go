@@ -13,8 +13,14 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
-	// color library
 )
+
+const (
+	// MicroquacksPerDuck is the number of microquacks equal to one duck. A microquack is a billionth of a quack, which is a hundredth of a duck.
+	MicroquacksPerDuck int64 = 1e8
+)
+
+// TODO: interpret hash as a big integer and set a target
 
 // A Block represents a validated set of transactions with proof of work, which makes it really hard to rewrite the blockchain.
 type Block struct {
@@ -30,7 +36,7 @@ type Block struct {
 	PrevHash string
 	// Solution is the nonce value that makes the Hash have a prefix of Difficulty zeros
 	Solution string
-	// Solver is the public key of the sender
+	// Solver is the address of the sender
 	Solver string
 	// Transaction is the transaction associated with this block
 	Tx Transaction `json:",omitempty"`
@@ -52,7 +58,7 @@ type Transaction struct {
 }
 
 // CalculateHash calculates the hash of a Block.
-func CalculateHash(block Block) string {
+func CalculateHash(block Block) string { // TODO: simply hash concatenated fields
 	block.Hash = ""
 	block.Tx.Signature = ""
 	return Shasum([]byte(ToJSON(block)))
