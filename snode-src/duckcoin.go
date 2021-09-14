@@ -10,8 +10,10 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math"
+	"math/big"
 	"net/http"
 	"os"
 	"os/user"
@@ -33,8 +35,9 @@ var (
 	PrivkeyFile = ConfigDir + "/privkey.pem"
 	URLFile     = ConfigDir + "/url.txt"
 
-	// Difficulty is how many zeros are needed in front of a block hash to be considred. a valid block. Thus, this controls how much work miners have to do.
-	Difficulty = 5
+	// Difficulty is the number which a block hash must be less than to be valid. Thus, this controls how much work miners have to do.
+	// It is initially set to requiring 5 hexadecimal zeros at the start (less than
+	Difficulty, _ = new(big.Int).SetString("0000100000000000000000000000000000000000000000000000000000000000", 16)
 
 	HelpMsg = `Duckcoin - quack money
 Usage: duckcoin [<num of blocks>] [-t/--to <pubkey> -a/--amount <quacks> -m/--message <msg>]
@@ -127,7 +130,13 @@ func main() {
 	address = util.DuckToAddress(pubkey)
 	fmt.Println("Mining to this address: ", gchalk.BrightBlue(address))
 
-	loadDifficultyAndURL()
+	err = loadDifficultyAndURL()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	//fmt.Println(Difficulty)
 
 	mine(amount, numOfBlocks, receiver, address, data, privkey, pubkey)
 }
@@ -195,21 +204,28 @@ func mine(amount, numOfBlocks int64, receiver, address, data, privkey, pubkey st
 }
 
 // loadDifficultyAndURL loads the server URL from the config file, and then loads the difficulty by contacting that server.
-func loadDifficultyAndURL() {
+func loadDifficultyAndURL() error {
 	data, err := ioutil.ReadFile(URLFile)
 	if err != nil {
 		_ = ioutil.WriteFile(URLFile, []byte(URL), 0644)
-		return
+		return nil
 	}
 	URL = strings.TrimSpace(string(data))
 
 	r, err := http.Get(URL + "/difficulty")
 	if err != nil {
-		fmt.Println(err)
-		return
+		return err
 	}
-	_ = json.NewDecoder(r.Body).Decode(&Difficulty)
-	_ = r.Body.Close()
+	defer r.Body.Close()
+
+	b, err := io.ReadAll(r.Body)
+	if err != nil {
+		return err
+	}
+	difficultyStr := string(b)
+
+	Difficulty, _ = new(big.Int).SetString(difficultyStr, 16)
+	return nil
 }
 
 // makeBlock creates one new block by accepting a block sent on blockChan as the latest block,
@@ -254,7 +270,7 @@ Mine:
 			if i&(1<<17-1) == 0 && i != 0 { // optimize to check every 131072 iterations (bitwise ops are faster)
 				fmt.Printf("Approx hashrate: %0.2f. Have checked %d hashes.\n", float64(i)/time.Since(hashRateStartTime).Seconds(), i)
 			}
-			if !util.IsHashSolution(util.CalculateHash(newBlock), Difficulty) {
+			if !util.IsHashSolutionBytes(util.CalculateHashBytes(newBlock), Difficulty) {
 				continue
 			} else {
 				fmt.Println("\nBlock made! It took", time.Since(t).Round(time.Second/100))
