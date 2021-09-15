@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math/big"
 	"net/http"
 	"os"
 	"strconv"
@@ -23,9 +24,10 @@ const (
 )
 
 var (
-	Difficulty  = 5 // this should change based on time taken by each block
-	NewestBlock util.Block
-	Balances    = make(map[string]int64)
+	// this should change based on time taken by each block
+	Difficulty, _ = new(big.Int).SetString("0000100000000000000000000000000000000000000000000000000000000000", 16)
+	NewestBlock   util.Block
+	Balances      = make(map[string]int64)
 )
 
 func main() {
@@ -47,7 +49,8 @@ func main() {
 	m.HandleFunc("/blocks/newest", handleGetNewest).Methods("GET")
 
 	m.HandleFunc("/difficulty", func(w http.ResponseWriter, r *http.Request) {
-		_, err := w.Write([]byte(strconv.Itoa(Difficulty)))
+		fmt.Println("Sending", Difficulty.Text(16), "to difficulty request")
+		_, err := w.Write([]byte(Difficulty.Text(16)))
 		if err != nil {
 			fmt.Println("error: ", err)
 			return
