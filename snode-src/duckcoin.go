@@ -2,13 +2,7 @@ package main
 
 import (
 	"bytes"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -26,100 +20,61 @@ import (
 )
 
 var (
-	URL         = "http://devzat.hackclub.com:8080"
-	Home, _     = os.UserHomeDir()
-	U, _        = user.Current()
-	Username    = U.Name
-	ConfigDir   = Home + "/.config/duckcoin"
-	PubkeyFile  = ConfigDir + "/pubkey.pem"
-	PrivkeyFile = ConfigDir + "/privkey.pem"
-	URLFile     = ConfigDir + "/url.txt"
+	URL = "http://devzat.hackclub.com:8080"
+
+	Username    = getUsername()
+	PubkeyFile  = getConfigDir() + "/pubkey.pem"
+	PrivkeyFile = getConfigDir() + "/privkey.pem"
+	URLFile     = getConfigDir() + "/url.txt"
 
 	// Difficulty is the number which a block hash must be less than to be valid. Thus, this controls how much work miners have to do.
-	// It is initially set to requiring 5 hexadecimal zeros at the start (less than
-	Difficulty, _ = new(big.Int).SetString("0000100000000000000000000000000000000000000000000000000000000000", 16)
+	// It is initially set to requiring 5 hexadecimal zeros at the start (the miner does sync to the server's actual difficulty)
+	Difficulty, _ = new(big.Int).SetString("00001"+strings.Repeat("0", 64-5), 16)
+	Pubkey        string
+	Privkey       string
+	Address       string
+
+	ArgReceiver    string // command line arguments
+	ArgMessage     string
+	ArgAmount      int64
+	ArgNumOfBlocks int64 = math.MaxInt64
 
 	HelpMsg = `Duckcoin - quack money
-Usage: duckcoin [<num of blocks>] [-t/--to <pubkey> -a/--amount <quacks> -m/--message <msg>]
-When run without arguments, Duckcoin mines Quacks to the key in ~/.config/duckcoin/pubkey.pem
+
+Usage: duckcoin [-h/--help]
+       duckcoin [<num of blocks>] [-s/--hide-user] [-t/--to <pubkey>] 
+                [-a/--amount <quacks>] [-m/--message <msg>]
+
+Duckcoin mines for the keypair in ~/.config/duckcoin. If the --message option is
+used in a block not containing a transaction, the block data field is set to it.
+Otherwise, the transaction's data field is used.
+
 Examples:
-   duckcoin
-   duckcoin 4 # mines 4 blocks
-   duckcoin 1 -t nSvl+K7RauJ5IagU+ID/slhDoR+435+NSLHOXzFBRmo= -a 3 -m "Payment of 3 Quacks to Ishan"`
+   duckcoin                                   # mine blocks continuously
+   duckcoin 4 -m "Mining cause I'm bored"     # mine 4 blocks with a message
+   duckcoin -s 4                              # hide your username
+   duckcoin 2 -t <receiver addr> -a 7 -m "Mine 2 blocks sending 7 ducks each"
+   duckcoin 1 -t nSvl+K7RauJ5IagU+ID/slhDoR+435+NSLHOXzFBRmo= -a 3.259 -m 
+      "send 3.259 ducks to Ishan Goel"
+
+For more info go to https://github.com/quackduck/duckcoin`
 )
 
 func main() {
+	parseArgs()
+
 	var err error
+	Pubkey, Privkey, err = util.LoadKeyPair(PubkeyFile, PrivkeyFile)
+	gchalk.BrightYellow("Loaded keys from " + PubkeyFile + " and " + PrivkeyFile)
 
-	var (
-		amount          int64
-		receiver        string
-		address         string
-		data            string
-		numOfBlocks     int64 = math.MaxInt64
-		pubkey, privkey string
-	)
-
-	if ok, _ := util.ArgsHaveOption("help", "h"); ok {
-		fmt.Println(HelpMsg)
-		return
-	}
-	if ok, i := util.ArgsHaveOption("to", "t"); ok {
-		if len(os.Args) < i+2 {
-			fmt.Println("Too few arguments to --to")
-			return
-		}
-		receiver = os.Args[i+1]
-
-		if !util.IsValidBase64(receiver) || len(receiver) != 44 {
-			fmt.Println("error: invalid receiver address")
-			return
-		}
-	}
-	if ok, i := util.ArgsHaveOption("message", "m"); ok {
-		if len(os.Args) < i+2 {
-			fmt.Println("Too few arguments to --message")
-			return
-		}
-		data = os.Args[i+1]
-	}
-	if ok, i := util.ArgsHaveOption("amount", "a"); ok {
-		if len(os.Args) < i+2 {
-			fmt.Println("Too few arguments to --amount")
-			return
-		}
-		var ducks float64
-		ducks, err = strconv.ParseFloat(os.Args[i+1], 64)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		amount = int64(ducks * float64(util.MicroquacksPerDuck))
-	}
-	if len(os.Args) > 1 {
-		i, err := strconv.ParseInt(os.Args[1], 10, 64)
-		if err == nil {
-			numOfBlocks = i
-		} else {
-			fmt.Println(err)
-			return
-		}
-	}
-
-	err = os.MkdirAll(ConfigDir, 0700)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	pubkey, privkey, err = loadKeyPair(PubkeyFile, PrivkeyFile)
 	if err != nil {
 		fmt.Println("Making you a fresh, new key pair and address!")
-		pubkey, privkey, err = makeKeyPair()
+		Pubkey, Privkey, err = util.MakeKeyPair()
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-		err = util.SaveKeyPair(pubkey, privkey, PubkeyFile, PrivkeyFile)
+		err = util.SaveKeyPair(Pubkey, Privkey, PubkeyFile, PrivkeyFile)
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -127,8 +82,8 @@ func main() {
 		gchalk.BrightYellow("Your keys have been saved to " + PubkeyFile + "(pubkey) and " + PrivkeyFile + " (privkey)")
 		gchalk.BrightRed("Do not tell anyone what's inside " + PrivkeyFile)
 	}
-	address = util.DuckToAddress(pubkey)
-	fmt.Println("Mining to this address: ", gchalk.BrightBlue(address))
+	Address = util.DuckToAddress(Pubkey)
+	fmt.Println("Mining to this address: ", gchalk.BrightBlue(Address))
 
 	err = loadDifficultyAndURL()
 	if err != nil {
@@ -136,16 +91,22 @@ func main() {
 		return
 	}
 
-	//fmt.Println(Difficulty)
+	blockMsg := ""
+	if Username == "" {
+		blockMsg = "Mined using the official Duckcoin CLI"
+	} else {
+		blockMsg = "Mined by the official Duckcoin CLI User: " + Username
+	}
+	if ArgAmount == 0 && ArgMessage != "" { // non tx block, user supplied message
+		blockMsg = ArgMessage
+	}
 
-	mine(amount, numOfBlocks, receiver, address, data, privkey, pubkey)
+	mine(ArgNumOfBlocks, ArgAmount, ArgReceiver, blockMsg, ArgMessage)
 }
 
 // mine mines numOfBlocks blocks, with the Transaction's arbitrary data field set to data if amount is not 0.
-// It also takes in the receiver's address and amount to send in each block, if amount is not 0
-//
-// mine also uses the global variables pubkey, privkey and address
-func mine(amount, numOfBlocks int64, receiver, address, data, privkey, pubkey string) {
+// It also takes in the receiver's Address and amount to send in each block, if amount is not 0
+func mine(numOfBlocks, amount int64, receiver, blockData, txData string) {
 	var i int64
 	var b util.Block
 	for ; i < numOfBlocks; i++ {
@@ -162,13 +123,13 @@ func mine(amount, numOfBlocks int64, receiver, address, data, privkey, pubkey st
 			blockChan <- b
 
 			makeBlock(
-				blockChan, privkey, "Mined by the official Duckcoin CLI User: "+Username, address,
+				blockChan, Privkey, blockData, Address,
 				util.Transaction{
-					Data:      data,
-					Sender:    address,
+					Data:      txData,
+					Sender:    Address,
 					Receiver:  receiver,
 					Amount:    amount,
-					PubKey:    pubkey,
+					PubKey:    Pubkey,
 					Signature: "", // Signature filled in by the makeBlock function
 				})
 
@@ -191,7 +152,7 @@ func mine(amount, numOfBlocks int64, receiver, address, data, privkey, pubkey st
 				_ = json.NewDecoder(r.Body).Decode(&currBlock)
 				_ = r.Body.Close()
 				if currBlock != b {
-					if currBlock.Solver != address {
+					if currBlock.Solver != Address {
 						fmt.Println(gchalk.RGB(255, 165, 0)("Gotta restart, someone else got block " + strconv.Itoa(int(currBlock.Index))))
 						b = currBlock
 						blockChan <- currBlock
@@ -203,37 +164,12 @@ func mine(amount, numOfBlocks int64, receiver, address, data, privkey, pubkey st
 	}
 }
 
-// loadDifficultyAndURL loads the server URL from the config file, and then loads the difficulty by contacting that server.
-func loadDifficultyAndURL() error {
-	data, err := ioutil.ReadFile(URLFile)
-	if err != nil {
-		_ = ioutil.WriteFile(URLFile, []byte(URL), 0644)
-		return nil
-	}
-	URL = strings.TrimSpace(string(data))
-
-	r, err := http.Get(URL + "/difficulty")
-	if err != nil {
-		return err
-	}
-	defer r.Body.Close()
-
-	b, err := io.ReadAll(r.Body)
-	if err != nil {
-		return err
-	}
-	difficultyStr := string(b)
-
-	Difficulty, _ = new(big.Int).SetString(difficultyStr, 16)
-	return nil
-}
-
 // makeBlock creates one new block by accepting a block sent on blockChan as the latest block,
 // and restarting mining in case a new block is sent on blockChan.
 // It takes in the user's private key to be used in signing tx, the transaction, if tx.Amount is not 0.
-// It also takes in the arbitrary data to be included in the block and the user's address (solver).
+// It also takes in the arbitrary data to be included in the block and the user's Address (solver).
 //
-// makeBlock also fills in the Transaction's Signature field and the Block's Hash field
+// makeBlock also fills in the transaction's Signature field and the block's Hash field
 func makeBlock(blockChan chan util.Block, privkey string, data string, solver string, tx util.Transaction) {
 	oldBlock := <-blockChan
 
@@ -248,9 +184,11 @@ Start:
 	newBlock.PrevHash = oldBlock.Hash
 	newBlock.Solver = solver
 	newBlock.Tx = tx
+
 	if newBlock.Tx.Amount == 0 {
-		newBlock.Tx.Receiver = ""
+		newBlock.Tx.Data = ""
 		newBlock.Tx.Sender = ""
+		newBlock.Tx.Receiver = ""
 		newBlock.Tx.PubKey = ""
 		newBlock.Tx.Signature = ""
 	}
@@ -308,45 +246,101 @@ Mine:
 	return
 }
 
-func makeKeyPair() (pub string, priv string, err error) {
-	pubkeyCurve := elliptic.P256()                              // see http://golang.org/pkg/crypto/elliptic/#P256
-	privkey, err := ecdsa.GenerateKey(pubkeyCurve, rand.Reader) // this generates a public & private key pair
+// loadDifficultyAndURL loads the server URL from the config file, and then loads the difficulty by contacting that server.
+func loadDifficultyAndURL() error {
+	data, err := ioutil.ReadFile(URLFile)
+	if err != nil {
+		_ = ioutil.WriteFile(URLFile, []byte(URL), 0644)
+		return nil
+	}
+	URL = strings.TrimSpace(string(data))
 
+	r, err := http.Get(URL + "/difficulty")
 	if err != nil {
-		return "", "", err
+		return err
 	}
-	pubkey := &privkey.PublicKey
-	pub, err = util.PublicKeytoDuck(pubkey)
+	defer r.Body.Close()
+
+	b, err := io.ReadAll(r.Body)
 	if err != nil {
-		return "", "", err
+		return err
 	}
-	priv, err = util.PrivateKeytoDuck(privkey)
-	if err != nil {
-		return "", "", err
-	}
-	return pub, priv, nil
+	difficultyStr := string(b)
+
+	Difficulty, _ = new(big.Int).SetString(difficultyStr, 16)
+	return nil
 }
 
-func loadKeyPair(pubfile string, privfile string) (pub string, priv string, err error) {
-	// see comment in util.SaveKeyPair for why the keys are base64 encoded before returning
-	data, err := ioutil.ReadFile(pubfile)
+func parseArgs() {
+	if ok, _ := util.ArgsHaveOption("help", "h"); ok {
+		fmt.Println(HelpMsg)
+		return
+	}
+	if ok, i := util.ArgsHaveOption("to", "t"); ok {
+		if len(os.Args) < i+2 {
+			fmt.Println("Too few arguments to --to")
+			return
+		}
+		ArgReceiver = os.Args[i+1]
+
+		if !util.IsValidBase64(ArgReceiver) || len(ArgReceiver) != 44 {
+			fmt.Println("error: invalid receiver address")
+			return
+		}
+	}
+	if ok, _ := util.ArgsHaveOption("hide-user", "s"); ok {
+		Username = ""
+		return
+	}
+	if ok, i := util.ArgsHaveOption("message", "m"); ok {
+		if len(os.Args) < i+2 {
+			fmt.Println("Too few arguments to --message")
+			return
+		}
+		ArgMessage = os.Args[i+1]
+	}
+	if ok, i := util.ArgsHaveOption("amount", "a"); ok {
+		if len(os.Args) < i+2 {
+			fmt.Println("Too few arguments to --amount")
+			return
+		}
+		ducks, err := strconv.ParseFloat(os.Args[i+1], 64)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		ArgAmount = int64(ducks * float64(util.MicroquacksPerDuck))
+	}
+	if len(os.Args) > 1 {
+		i, err := strconv.ParseInt(os.Args[1], 10, 64)
+		if err == nil {
+			ArgNumOfBlocks = i
+		} else {
+			fmt.Println(err)
+			return
+		}
+	}
+}
+
+func getConfigDir() string {
+	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", "", err
+		fmt.Println("error:", err)
+		os.Exit(0)
 	}
-	key, _ := pem.Decode(data)
-	if key == nil {
-		return "", "", errors.New("could not decode PEM data from " + pubfile)
-	}
-	pubkey := base64.StdEncoding.EncodeToString(key.Bytes)
-	data, err = ioutil.ReadFile(privfile)
+	err = os.MkdirAll(home+"/.config/duckcoin", 0700)
 	if err != nil {
-		return "", "", err
+		fmt.Println(err)
+		os.Exit(0)
 	}
-	key, _ = pem.Decode(data)
-	if key == nil {
-		return "", "", errors.New("could not decode PEM data from " + privfile)
+	return home + "/.config/duckcoin"
+}
+
+func getUsername() string {
+	u, err := user.Current()
+	if err != nil {
+		fmt.Println("error:", err)
+		os.Exit(0)
 	}
-	privkey := base64.StdEncoding.EncodeToString(key.Bytes)
-	gchalk.BrightYellow("Loaded keys from " + pubfile + " and " + privfile)
-	return pubkey, privkey, nil
+	return u.Username
 }
