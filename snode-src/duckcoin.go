@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
-	"math/big"
 	"net/http"
 	"os"
 	"os/user"
@@ -27,12 +26,14 @@ var (
 	PrivkeyFile = getConfigDir() + "/privkey.pem"
 	URLFile     = getConfigDir() + "/url.txt"
 
-	// Difficulty is the number which a block hash must be less than to be valid. Thus, this controls how much work miners have to do.
-	// It is initially set to requiring 5 hexadecimal zeros at the start (the miner does sync to the server's actual difficulty)
-	Difficulty, _ = new(big.Int).SetString("00001"+strings.Repeat("0", 64-5), 16)
-	Pubkey        string
-	Privkey       string
-	Address       string
+	// Difficulty is the number of hashes needed for a block to be valid on average.
+	//
+	// See util.GetTarget for more information on the relationship between targets and Difficulty.
+	Difficulty int64
+
+	Pubkey  string
+	Privkey string
+	Address string
 
 	ArgReceiver    string // command line arguments
 	ArgMessage     string
@@ -61,12 +62,11 @@ For more info go to https://github.com/quackduck/duckcoin`
 )
 
 func main() {
-	parseArgs()
-
 	var err error
+
+	parseArgs()
 	Pubkey, Privkey, err = util.LoadKeyPair(PubkeyFile, PrivkeyFile)
 	gchalk.BrightYellow("Loaded keys from " + PubkeyFile + " and " + PrivkeyFile)
-
 	if err != nil {
 		fmt.Println("Making you a fresh, new key pair and address!")
 		Pubkey, Privkey, err = util.MakeKeyPair()
@@ -82,6 +82,7 @@ func main() {
 		gchalk.BrightYellow("Your keys have been saved to " + PubkeyFile + "(pubkey) and " + PrivkeyFile + " (privkey)")
 		gchalk.BrightRed("Do not tell anyone what's inside " + PrivkeyFile)
 	}
+
 	Address = util.DuckToAddress(Pubkey)
 	fmt.Println("Mining to this address: ", gchalk.BrightBlue(Address))
 
@@ -90,7 +91,6 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-
 	blockMsg := ""
 	if Username == "" {
 		blockMsg = "Mined using the official Duckcoin CLI"
@@ -171,14 +171,20 @@ func mine(numOfBlocks, amount int64, receiver, blockData, txData string) {
 //
 // makeBlock also fills in the transaction's Signature field and the block's Hash field
 func makeBlock(blockChan chan util.Block, privkey string, data string, solver string, tx util.Transaction) {
-	oldBlock := <-blockChan
-
 	var newBlock util.Block
 
-	t := time.Now()
-	newBlock.Timestamp = t.UnixNano() / 1e6 // convert to millis
+	err := loadDifficultyAndURL()
+	if err != nil {
+		fmt.Println("error: ", err)
+	}
+	fmt.Println(gchalk.BrightYellow(fmt.Sprint("Current difficulty: ", Difficulty)))
+	target := util.GetTarget(Difficulty)
 
-Start:
+	oldBlock := <-blockChan
+
+	t := time.Now()
+	newBlock.Timestamp = t.UnixMilli()
+Restart:
 	newBlock.Index = oldBlock.Index + 1
 	newBlock.Data = data
 	newBlock.PrevHash = oldBlock.Hash
@@ -196,19 +202,19 @@ Start:
 	hashRateStartTime := time.Now()
 	var i int64
 Mine:
-	for i = 0; ; i++ {
+	for i = 0; ; i++ { // stuff in this loop needs to be super optimized
 		select {
 		case b := <-blockChan:
 			if oldBlock != b {
 				oldBlock = b
-				goto Start
+				goto Restart
 			}
 		default:
 			newBlock.Solution = strconv.FormatInt(i, 10)
 			if i&(1<<17-1) == 0 && i != 0 { // optimize to check every 131072 iterations (bitwise ops are faster)
 				fmt.Printf("Approx hashrate: %0.2f. Have checked %d hashes.\n", float64(i)/time.Since(hashRateStartTime).Seconds(), i)
 			}
-			if !util.IsHashSolutionBytes(util.CalculateHashBytes(newBlock), Difficulty) {
+			if !util.IsHashValidBytes(util.CalculateHashBytes(newBlock), target) {
 				continue
 			} else {
 				fmt.Println("\nBlock made! It took", time.Since(t).Round(time.Second/100))
@@ -238,6 +244,7 @@ Mine:
 					return
 				}
 				fmt.Println("Server returned", gchalk.BrightGreen(string(resp)))
+				fmt.Printf("\n\n")
 				_ = r.Body.Close()
 				break Mine
 			}
@@ -265,9 +272,10 @@ func loadDifficultyAndURL() error {
 	if err != nil {
 		return err
 	}
-	difficultyStr := string(b)
-
-	Difficulty, _ = new(big.Int).SetString(difficultyStr, 16)
+	Difficulty, err = strconv.ParseInt(string(b), 10, 64)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -14,14 +14,17 @@ import (
 	"io/ioutil"
 	"math/big"
 	"os"
+	"strconv"
 )
 
 const (
-	// MicroquacksPerDuck is the number of microquacks equal to one duck. A microquack is a billionth of a quack, which is a hundredth of a duck.
+	// MicroquacksPerDuck is the number of microquacks equal to one duck.
+	// A microquack is a billionth of a quack, which is a hundredth of a duck.
 	MicroquacksPerDuck int64 = 1e8
 )
 
-// A Block represents a validated set of transactions with proof of work, which makes it really hard to rewrite the blockchain.
+// A Block represents data optionally with a transaction including proof of work,
+// which makes it really hard to rewrite the blockchain.
 type Block struct {
 	// Index is the Block number
 	Index int64
@@ -29,7 +32,7 @@ type Block struct {
 	Timestamp int64
 	// Data stores any (arbitrary) additional data >= 250 kb long.
 	Data string
-	//Hash stores the hex value of the sha256 sum of the block represented as JSON with the indent as "   " and Hash as ""
+	//Hash stores the hash as computed by CalculateHash
 	Hash string
 	// PrevHash is the hash of the previous Block in the Blockchain
 	PrevHash string
@@ -56,16 +59,31 @@ type Transaction struct {
 	Signature string `json:",omitempty"`
 }
 
+// GetTarget returns a "target" which block hashes must be lower than to be valid.
+// This is calculated such that miners will need to compute difficulty hashes on average
+// for a valid hash.
+func GetTarget(difficulty int64) *big.Int {
+	d := new(big.Int)
+	// this is the number of possible hashes: 16^64 = 2^256
+	d.Lsh(big.NewInt(1), 256)
+	// now divide by t so that there's a 1/t chance that a hash is smaller than Difficulty
+	// this works because the total pool of valid hashes will become t times smaller than the max size
+	d.Quo(d, big.NewInt(difficulty))
+	return d
+}
+
 // CalculateHash calculates the hash of a Block.
 func CalculateHash(block Block) string {
 	return hex.EncodeToString(CalculateHashBytes(block))
 }
 
 // CalculateHashBytes calculates the hash of a Block.
-func CalculateHashBytes(block Block) []byte { // TODO: simply hash concatenated fields: HARD FORK
-	block.Hash = ""
-	block.Tx.Signature = ""
-	return ShasumBytes([]byte(ToJSON(block)))
+func CalculateHashBytes(b Block) []byte {
+	return ShasumBytes(
+		[]byte(strconv.FormatInt(b.Index, 10) + strconv.FormatInt(b.Timestamp, 10) + b.Data + b.PrevHash + b.Solution + b.Solver +
+			b.Tx.Data + b.Tx.Sender + b.Tx.Receiver + strconv.FormatInt(b.Tx.Amount, 10) + b.Tx.Signature,
+		),
+	)
 }
 
 // MakeSignature signs a message with a private key.
@@ -95,8 +113,8 @@ func ShasumBytes(record []byte) []byte {
 	return hashed
 }
 
-// IsHashSolution checks if a hash is a valid block hash
-func IsHashSolution(hash string, difficulty *big.Int) bool {
+// IsHashValid checks if a hash is a valid block hash
+func IsHashValid(hash string, target *big.Int) bool {
 	if len(hash) != sha256.Size*2 { // 32 bytes == 64 hex chars
 		return false
 	}
@@ -104,17 +122,17 @@ func IsHashSolution(hash string, difficulty *big.Int) bool {
 	if !ok {
 		return ok
 	}
-	return IsHashSolutionBytes(d.FillBytes(make([]byte, 32, 32)), difficulty)
+	return IsHashValidBytes(d.FillBytes(make([]byte, 32, 32)), target)
 }
 
-// IsHashSolutionBytes checks if a hash is a valid block hash
-func IsHashSolutionBytes(hash []byte, difficulty *big.Int) bool {
+// IsHashValidBytes checks if a hash is a valid block hash
+func IsHashValidBytes(hash []byte, target *big.Int) bool {
 	if len(hash) != sha256.Size { // 32 bytes
 		return false
 	}
 	d := new(big.Int)
 	d.SetBytes(hash)
-	return difficulty.Cmp(d) == 1 // difficulty is greater than d
+	return target.Cmp(d) == 1 // is target greater than d
 }
 
 // ToJSON is a convenience method for serializing to JSON
@@ -134,8 +152,8 @@ func ArgsHaveOption(long string, short string) (hasOption bool, foundAt int) {
 }
 
 // DuckToAddress converts a Duckcoin public key to a Duckcoin address.
-func DuckToAddress(duckkey string) string {
-	hash := sha256.Sum256([]byte(duckkey))
+func DuckToAddress(key string) string {
+	hash := sha256.Sum256([]byte(key))
 	return base64.StdEncoding.EncodeToString(hash[:])
 }
 
