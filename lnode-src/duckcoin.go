@@ -26,7 +26,7 @@ var (
 	NewestBlock util.Block
 	Balances    = make(map[string]int64)
 
-	ReCalcInterval   = 1
+	ReCalcInterval   = 100
 	Past100Durations = make([]time.Duration, 0, ReCalcInterval)
 	NewestBlockTime  = time.Now()
 	TargetDuration   = time.Second * 30
