@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math/big"
 	"net/http"
 	"os"
 	"strconv"
@@ -24,13 +23,23 @@ const (
 )
 
 var (
-	// this should change based on time taken by each block
-	Difficulty, _ = new(big.Int).SetString("0000100000000000000000000000000000000000000000000000000000000000", 16)
-	NewestBlock   util.Block
-	Balances      = make(map[string]int64)
+	NewestBlock util.Block
+	Balances    = make(map[string]int64)
+
+	ReCalcInterval   = 100
+	Past100Durations = make([]time.Duration, 0, ReCalcInterval)
+	NewestBlockTime  = time.Now()
+	TargetDuration   = time.Second * 30
+
+	// Difficulty is the number of hashes needed for a block to be valid on average.
+	// See util.GetTarget for more information.
+	Difficulty int64
 )
 
 func main() {
+	Past100Durations = append(Past100Durations, TargetDuration)
+	Difficulty = 1048576
+
 	if !fileExists(BlockchainFile) {
 		if err := setupNewBlockchain(); err != nil {
 			fmt.Println("error: ", err)
@@ -49,8 +58,7 @@ func main() {
 	m.HandleFunc("/blocks/newest", handleGetNewest).Methods("GET")
 
 	m.HandleFunc("/difficulty", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("Sending", Difficulty.Text(16), "to difficulty request")
-		_, err := w.Write([]byte(Difficulty.Text(16)))
+		_, err := w.Write([]byte(strconv.FormatInt(Difficulty, 10)))
 		if err != nil {
 			fmt.Println("error: ", err)
 			return
@@ -151,6 +159,16 @@ func setupNewBlockchain() error {
 }
 
 func addBlockToChain(b util.Block) {
+	fmt.Println("Adding a block with hash:", b.Hash+". This one came in", time.Since(NewestBlockTime), "after the previous block.")
+
+	if len(Past100Durations) < ReCalcInterval {
+		Past100Durations = append(Past100Durations, time.Since(NewestBlockTime))
+	} else { // trigger a recalculation of the difficulty
+		reCalcDifficulty()
+		Past100Durations = make([]time.Duration, 0, ReCalcInterval)
+	}
+	NewestBlockTime = time.Now()
+
 	Balances[b.Solver] += Reward
 	NewestBlock = b
 	if b.Tx.Amount > 0 {
@@ -270,14 +288,14 @@ func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 		respondWithJSON(w, http.StatusBadRequest, r.Body)
 		return
 	}
-	fmt.Println(b)
+	//fmt.Println(b)
 	defer r.Body.Close()
 
 	if err := isValid(b, NewestBlock); err == nil {
 		addBlockToChain(b)
 	} else {
 		respondWithJSON(w, http.StatusBadRequest, "Invalid block. "+err.Error())
-		fmt.Println("Rejected block")
+		fmt.Println("Rejected a block")
 		return
 	}
 	respondWithJSON(w, http.StatusCreated, "Block accepted.")
@@ -316,10 +334,13 @@ func isValid(newBlock, oldBlock util.Block) error {
 	if oldBlock.Hash != newBlock.PrevHash {
 		return errors.New("PrevHash should be " + oldBlock.Hash)
 	}
-	if util.CalculateHash(newBlock) != newBlock.Hash {
-		return errors.New("Block Hash is incorrect. This usually happens if your Difficulty is set incorrectly. Restart your miner.")
+	if time.Now().UnixMilli()-newBlock.Timestamp > 1e3*60*5 { // 5 minutes in millis
+		return errors.New("Block timestamp is not within 5 minutes before current time. What are you trying to pull off here?")
 	}
-	if !util.IsHashSolution(newBlock.Hash, Difficulty) {
+	if util.CalculateHash(newBlock) != newBlock.Hash {
+		return errors.New("Block Hash does not match actual hash.")
+	}
+	if !util.IsHashValid(newBlock.Hash, util.GetTarget(Difficulty)) {
 		return errors.New("Block is not a solution (does not have Difficulty zeros in hash)")
 	}
 	if len(newBlock.Data) > blockDataLimit {
@@ -350,4 +371,21 @@ func isValid(newBlock, oldBlock util.Block) error {
 		}
 	}
 	return nil
+}
+
+func reCalcDifficulty() {
+	var avg int64 = 0
+	var i int64 = 0
+	for _, v := range Past100Durations {
+		avg += int64(v)
+		i++
+	}
+	avg /= i
+	avgDur := time.Duration(avg)
+	fmt.Println("The average duration between blocks for the past 100 blocks was:", avgDur)
+	// TargetDuration/avgDur is the scale factor for what the current target is
+	// if avgDur is higher than TargetDuration, then the Difficulty will be made lower
+	// if avgDur is lower, then the Difficulty will be made higher
+	Difficulty = (Difficulty * int64(TargetDuration)) / avg
+	fmt.Println("\nRecalculated difficulty. It is now", Difficulty)
 }
