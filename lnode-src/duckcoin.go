@@ -16,20 +16,24 @@ import (
 )
 
 const (
-	BlockchainFile        = "blockchain.json"
-	NewestBlockFile       = "newestblock.json"
-	BalancesFile          = "balances.json"
-	Reward          int64 = 1e6
+	// BlockchainFile is where the chain is stored, currently in the centralized model, it's the only copy
+	BlockchainFile = "blockchain.json"
+	// NewestBlockFile saves the latest block for easy access on the api
+	NewestBlockFile = "newestblock.json"
+	// BalancesFile stores the balances of all accounts that have mined a block on the chain.
+	BalancesFile = "balances.json"
+	// Reward is how many microquacks each miner gets for a block
+	Reward int64 = 1e6
 )
 
 var (
-	NewestBlock util.Block
-	Balances    = make(map[string]int64)
+	newestBlock util.Block
+	balances    = make(map[string]int64)
 
-	ReCalcInterval   = 100
-	Past100Durations = make([]time.Duration, 0, ReCalcInterval)
-	NewestBlockTime  = time.Now()
-	TargetDuration   = time.Second * 30
+	reCalcInterval   = 100
+	past100Durations = make([]time.Duration, 0, reCalcInterval)
+	newestBlockTime  = time.Now()
+	targetDuration   = time.Second * 30
 
 	// Difficulty is the number of hashes needed for a block to be valid on average.
 	// See util.GetTarget for more information.
@@ -37,7 +41,7 @@ var (
 )
 
 func main() {
-	Past100Durations = append(Past100Durations, TargetDuration)
+	past100Durations = append(past100Durations, targetDuration)
 	Difficulty = 1048576
 
 	if !fileExists(BlockchainFile) {
@@ -98,7 +102,7 @@ func setup() error {
 	if err != nil {
 		return err
 	}
-	err = json.Unmarshal(b, &NewestBlock)
+	err = json.Unmarshal(b, &newestBlock)
 	if err != nil {
 		return err
 	}
@@ -106,7 +110,7 @@ func setup() error {
 	if err != nil {
 		return err
 	}
-	err = json.Unmarshal(b, &Balances)
+	err = json.Unmarshal(b, &balances)
 	if err != nil {
 		return err
 	}
@@ -143,15 +147,15 @@ func setupNewBlockchain() error {
 		return err
 	}
 
-	NewestBlock = genesisBlock
-	err = ioutil.WriteFile(NewestBlockFile, []byte(util.ToJSON(NewestBlock)), 0755)
+	newestBlock = genesisBlock
+	err = ioutil.WriteFile(NewestBlockFile, []byte(util.ToJSON(newestBlock)), 0755)
 	if err != nil {
 		return err
 	}
 	if err != nil {
 		return err
 	}
-	err = ioutil.WriteFile(BalancesFile, []byte(util.ToJSON(Balances)), 0755)
+	err = ioutil.WriteFile(BalancesFile, []byte(util.ToJSON(balances)), 0755)
 	if err != nil {
 		return err
 	}
@@ -159,23 +163,23 @@ func setupNewBlockchain() error {
 }
 
 func addBlockToChain(b util.Block) {
-	fmt.Println("Adding a block with hash:", b.Hash+". This one came in", time.Since(NewestBlockTime), "after the previous block.")
+	fmt.Println("Adding a block with hash:", b.Hash+". This one came in", time.Since(newestBlockTime), "after the previous block.")
 
-	if len(Past100Durations) < ReCalcInterval {
-		Past100Durations = append(Past100Durations, time.Since(NewestBlockTime))
+	if len(past100Durations) < reCalcInterval {
+		past100Durations = append(past100Durations, time.Since(newestBlockTime))
 	} else { // trigger a recalculation of the difficulty
 		reCalcDifficulty()
-		Past100Durations = make([]time.Duration, 0, ReCalcInterval)
+		past100Durations = make([]time.Duration, 0, reCalcInterval)
 	}
-	NewestBlockTime = time.Now()
+	newestBlockTime = time.Now()
 
-	Balances[b.Solver] += Reward
-	NewestBlock = b
+	balances[b.Solver] += Reward
+	newestBlock = b
 	if b.Tx.Amount > 0 {
-		Balances[b.Solver] -= Reward // no reward for a transaction block so we can give that reward to the lnodes (TODO).
+		balances[b.Solver] -= Reward // no reward for a transaction block so we can give that reward to the lnodes (TODO).
 
-		Balances[b.Solver] -= b.Tx.Amount
-		Balances[b.Tx.Receiver] += b.Tx.Amount
+		balances[b.Solver] -= b.Tx.Amount
+		balances[b.Tx.Receiver] += b.Tx.Amount
 	}
 
 	err := truncateFile(BlockchainFile, 2) // remove the last two parts (the bracket and the newline)
@@ -207,7 +211,7 @@ func addBlockToChain(b util.Block) {
 	if err != nil {
 		fmt.Println("Could not write to", NewestBlockFile)
 	}
-	err = ioutil.WriteFile(BalancesFile, []byte(util.ToJSON(Balances)), 0755)
+	err = ioutil.WriteFile(BalancesFile, []byte(util.ToJSON(balances)), 0755)
 	if err != nil {
 		fmt.Println("Could not write to", BalancesFile)
 	}
@@ -249,7 +253,7 @@ func handleGetBlocks(w http.ResponseWriter, _ *http.Request) {
 func handleGetBalances(w http.ResponseWriter, _ *http.Request) {
 	balancesNew := make(map[string]float64)
 
-	for address, balance := range Balances {
+	for address, balance := range balances {
 		balancesNew[address] = float64(balance) / float64(util.MicroquacksPerDuck)
 	}
 
@@ -266,7 +270,7 @@ func handleGetBalances(w http.ResponseWriter, _ *http.Request) {
 }
 
 func handleGetNewest(w http.ResponseWriter, _ *http.Request) {
-	bytes, err := json.MarshalIndent(NewestBlock, "", "  ")
+	bytes, err := json.MarshalIndent(newestBlock, "", "  ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -291,7 +295,7 @@ func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 	//fmt.Println(b)
 	defer r.Body.Close()
 
-	if err := isValid(b, NewestBlock); err == nil {
+	if err := isValid(b, newestBlock); err == nil {
 		addBlockToChain(b)
 	} else {
 		respondWithJSON(w, http.StatusBadRequest, "Invalid block. "+err.Error())
@@ -338,7 +342,7 @@ func isValid(newBlock, oldBlock util.Block) error {
 		return errors.New("Block timestamp is not within 5 minutes before current time. What are you trying to pull off here?")
 	}
 	if util.CalculateHash(newBlock) != newBlock.Hash {
-		return errors.New("Block Hash does not match actual hash.")
+		return errors.New("Block Hash does not match actual hash")
 	}
 	if !util.IsHashValid(newBlock.Hash, util.GetTarget(Difficulty)) {
 		return errors.New("Block is not a solution (does not have Difficulty zeros in hash)")
@@ -356,16 +360,16 @@ func isValid(newBlock, oldBlock util.Block) error {
 		if ok, err := util.CheckSignature(newBlock.Tx.Signature, newBlock.Tx.PubKey, newBlock.Hash); !ok {
 			if err != nil {
 				return err
-			} else {
-				return errors.New("Invalid signature")
 			}
+			
+			return errors.New("Invalid signature")
 		}
 		if newBlock.Tx.Sender == newBlock.Solver {
-			if Balances[newBlock.Tx.Sender] < newBlock.Tx.Amount { // notice that there is no reward for this block's PoW added to the sender's account first
+			if balances[newBlock.Tx.Sender] < newBlock.Tx.Amount { // notice that there is no reward for this block's PoW added to the sender's account first
 				return errors.New("Insufficient balance")
 			}
 		} else {
-			if Balances[newBlock.Tx.Sender] < newBlock.Tx.Amount {
+			if balances[newBlock.Tx.Sender] < newBlock.Tx.Amount {
 				return errors.New("Insufficient balance")
 			}
 		}
@@ -376,16 +380,16 @@ func isValid(newBlock, oldBlock util.Block) error {
 func reCalcDifficulty() {
 	var avg int64 = 0
 	var i int64 = 0
-	for _, v := range Past100Durations {
+	for _, v := range past100Durations {
 		avg += int64(v)
 		i++
 	}
 	avg /= i
 	avgDur := time.Duration(avg)
-	fmt.Println(fmt.Sprintf("The average duration between blocks for the past %d blocks was: %s", ReCalcInterval, avgDur.String()))
+	fmt.Println(fmt.Sprintf("The average duration between blocks for the past %d blocks was: %s", reCalcInterval, avgDur.String()))
 	// TargetDuration/avgDur is the scale factor for what the current target is
 	// if avgDur is higher than TargetDuration, then the Difficulty will be made lower
 	// if avgDur is lower, then the Difficulty will be made higher
-	Difficulty = (Difficulty * int64(TargetDuration)) / avg
+	Difficulty = (Difficulty * int64(targetDuration)) / avg
 	fmt.Println("\nRecalculated difficulty. It is now", Difficulty)
 }

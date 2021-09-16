@@ -19,11 +19,13 @@ import (
 )
 
 var (
+	// URL is the url of the api to use the blockchain. In the future this will be decentralized
 	URL = "http://devzat.hackclub.com:8080"
 
-	Username    = getUsername()
-	PubkeyFile  = getConfigDir() + "/pubkey.pem"
-	PrivkeyFile = getConfigDir() + "/privkey.pem"
+	uername    = getUsername()
+	pubkeyFile  = getConfigDir() + "/pubkey.pem"
+	privkeyFile = getConfigDir() + "/privkey.pem"
+	// URLFile is where the config for the api url is saved
 	URLFile     = getConfigDir() + "/url.txt"
 
 	// Difficulty is the number of hashes needed for a block to be valid on average.
@@ -31,16 +33,16 @@ var (
 	// See util.GetTarget for more information on the relationship between targets and Difficulty.
 	Difficulty int64
 
-	Pubkey  string
-	Privkey string
-	Address string
+	pubkey  string
+	privkey string
+	address string
 
-	ArgReceiver    string // command line arguments
-	ArgMessage     string
-	ArgAmount      int64
-	ArgNumOfBlocks int64 = math.MaxInt64
+	argReceiver    string // command line arguments
+	argMessage     string
+	argAmount      int64
+	argNumOfBlocks int64 = math.MaxInt64
 
-	HelpMsg = `Duckcoin - quack money
+	helpMsg = `Duckcoin - quack money
 
 Usage: duckcoin [-h/--help]
        duckcoin [<num of blocks>] [-s/--hide-user] [-t/--to <pubkey>] 
@@ -65,26 +67,26 @@ func main() {
 	var err error
 
 	parseArgs()
-	Pubkey, Privkey, err = util.LoadKeyPair(PubkeyFile, PrivkeyFile)
-	gchalk.BrightYellow("Loaded keys from " + PubkeyFile + " and " + PrivkeyFile)
+	pubkey, privkey, err = util.LoadKeyPair(pubkeyFile, privkeyFile)
+	gchalk.BrightYellow("Loaded keys from " + pubkeyFile + " and " + privkeyFile)
 	if err != nil {
 		fmt.Println("Making you a fresh, new key pair and address!")
-		Pubkey, Privkey, err = util.MakeKeyPair()
+		pubkey, privkey, err = util.MakeKeyPair()
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-		err = util.SaveKeyPair(Pubkey, Privkey, PubkeyFile, PrivkeyFile)
+		err = util.SaveKeyPair(pubkey, privkey, pubkeyFile, privkeyFile)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-		gchalk.BrightYellow("Your keys have been saved to " + PubkeyFile + "(pubkey) and " + PrivkeyFile + " (privkey)")
-		gchalk.BrightRed("Do not tell anyone what's inside " + PrivkeyFile)
+		gchalk.BrightYellow("Your keys have been saved to " + pubkeyFile + "(pubkey) and " + privkeyFile + " (privkey)")
+		gchalk.BrightRed("Do not tell anyone what's inside " + privkeyFile)
 	}
 
-	Address = util.DuckToAddress(Pubkey)
-	fmt.Println("Mining to this address: ", gchalk.BrightBlue(Address))
+	address = util.DuckToAddress(pubkey)
+	fmt.Println("Mining to this address: ", gchalk.BrightBlue(address))
 
 	err = loadDifficultyAndURL()
 	if err != nil {
@@ -92,16 +94,16 @@ func main() {
 		return
 	}
 	blockMsg := ""
-	if Username == "" {
+	if uername == "" {
 		blockMsg = "Mined using the official Duckcoin CLI"
 	} else {
-		blockMsg = "Mined by the official Duckcoin CLI User: " + Username
+		blockMsg = "Mined by the official Duckcoin CLI User: " + uername
 	}
-	if ArgAmount == 0 && ArgMessage != "" { // non tx block, user supplied message
-		blockMsg = ArgMessage
+	if argAmount == 0 && argMessage != "" { // non tx block, user supplied message
+		blockMsg = argMessage
 	}
 
-	mine(ArgNumOfBlocks, ArgAmount, ArgReceiver, blockMsg, ArgMessage)
+	mine(argNumOfBlocks, argAmount, argReceiver, blockMsg, argMessage)
 }
 
 // mine mines numOfBlocks blocks, with the Transaction's arbitrary data field set to data if amount is not 0.
@@ -123,13 +125,13 @@ func mine(numOfBlocks, amount int64, receiver, blockData, txData string) {
 			blockChan <- b
 
 			makeBlock(
-				blockChan, Privkey, blockData, Address,
+				blockChan, privkey, blockData, address,
 				util.Transaction{
 					Data:      txData,
-					Sender:    Address,
+					Sender:    address,
 					Receiver:  receiver,
 					Amount:    amount,
-					PubKey:    Pubkey,
+					PubKey:    pubkey,
 					Signature: "", // Signature filled in by the makeBlock function
 				})
 
@@ -152,7 +154,7 @@ func mine(numOfBlocks, amount int64, receiver, blockData, txData string) {
 				_ = json.NewDecoder(r.Body).Decode(&currBlock)
 				_ = r.Body.Close()
 				if currBlock != b {
-					if currBlock.Solver != Address {
+					if currBlock.Solver != address {
 						fmt.Println(gchalk.RGB(255, 165, 0)("Gotta restart, someone else got block " + strconv.Itoa(int(currBlock.Index))))
 						b = currBlock
 						blockChan <- currBlock
@@ -281,7 +283,7 @@ func loadDifficultyAndURL() error {
 
 func parseArgs() {
 	if ok, _ := util.ArgsHaveOption("help", "h"); ok {
-		fmt.Println(HelpMsg)
+		fmt.Println(helpMsg)
 		return
 	}
 	if ok, i := util.ArgsHaveOption("to", "t"); ok {
@@ -289,15 +291,15 @@ func parseArgs() {
 			fmt.Println("Too few arguments to --to")
 			return
 		}
-		ArgReceiver = os.Args[i+1]
+		argReceiver = os.Args[i+1]
 
-		if !util.IsValidBase64(ArgReceiver) || len(ArgReceiver) != 44 {
+		if !util.IsValidBase64(argReceiver) || len(argReceiver) != 44 {
 			fmt.Println("error: invalid receiver address")
 			return
 		}
 	}
 	if ok, _ := util.ArgsHaveOption("hide-user", "s"); ok {
-		Username = ""
+		uername = ""
 		return
 	}
 	if ok, i := util.ArgsHaveOption("message", "m"); ok {
@@ -305,7 +307,7 @@ func parseArgs() {
 			fmt.Println("Too few arguments to --message")
 			return
 		}
-		ArgMessage = os.Args[i+1]
+		argMessage = os.Args[i+1]
 	}
 	if ok, i := util.ArgsHaveOption("amount", "a"); ok {
 		if len(os.Args) < i+2 {
@@ -317,12 +319,12 @@ func parseArgs() {
 			fmt.Println(err)
 			return
 		}
-		ArgAmount = int64(ducks * float64(util.MicroquacksPerDuck))
+		argAmount = int64(ducks * float64(util.MicroquacksPerDuck))
 	}
 	if len(os.Args) > 1 {
 		i, err := strconv.ParseInt(os.Args[1], 10, 64)
 		if err == nil {
-			ArgNumOfBlocks = i
+			argNumOfBlocks = i
 		} else {
 			fmt.Println(err)
 			return
