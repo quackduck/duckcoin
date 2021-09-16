@@ -115,7 +115,7 @@ func ShasumBytes(record []byte) []byte {
 
 // IsHashValid checks if a hash is a valid block hash
 func IsHashValid(hash string, target *big.Int) bool {
-	if len(hash) != sha256.Size*2 { // 32 bytes == 64 hex chars
+	if len(hash) != 64 { // 32 bytes == 64 hex chars
 		return false
 	}
 	d, ok := new(big.Int).SetString(hash, 16)
@@ -127,11 +127,10 @@ func IsHashValid(hash string, target *big.Int) bool {
 
 // IsHashValidBytes checks if a hash is a valid block hash
 func IsHashValidBytes(hash []byte, target *big.Int) bool {
-	if len(hash) != sha256.Size { // 32 bytes
+	if len(hash) != 32 { // 32 bytes, a normal sha256 hash
 		return false
 	}
-	d := new(big.Int)
-	d.SetBytes(hash)
+	d := new(big.Int).SetBytes(hash)
 	return target.Cmp(d) == 1 // is target greater than d
 }
 
