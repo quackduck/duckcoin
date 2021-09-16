@@ -382,7 +382,7 @@ func reCalcDifficulty() {
 	}
 	avg /= i
 	avgDur := time.Duration(avg)
-	fmt.Println("The average duration between blocks for the past 100 blocks was:", avgDur)
+	fmt.Println(fmt.Sprintf("The average duration between blocks for the past %d blocks was: %s", ReCalcInterval, avgDur.String()))
 	// TargetDuration/avgDur is the scale factor for what the current target is
 	// if avgDur is higher than TargetDuration, then the Difficulty will be made lower
 	// if avgDur is lower, then the Difficulty will be made higher
