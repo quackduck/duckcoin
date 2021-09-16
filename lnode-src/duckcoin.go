@@ -26,7 +26,7 @@ var (
 	NewestBlock util.Block
 	Balances    = make(map[string]int64)
 
-	ReCalcInterval   = 100
+	ReCalcInterval   = 1
 	Past100Durations = make([]time.Duration, 0, ReCalcInterval)
 	NewestBlockTime  = time.Now()
 	TargetDuration   = time.Second * 30
@@ -382,7 +382,7 @@ func reCalcDifficulty() {
 	}
 	avg /= i
 	avgDur := time.Duration(avg)
-	fmt.Println(fmt.Sprintf("The average duration between blocks for the past %d blocks was: %f", ReCalcInterval, avgDur))
+	fmt.Println(fmt.Sprintf("The average duration between blocks for the past %d blocks was: %s", ReCalcInterval, avgDur.String()))
 	// TargetDuration/avgDur is the scale factor for what the current target is
 	// if avgDur is higher than TargetDuration, then the Difficulty will be made lower
 	// if avgDur is lower, then the Difficulty will be made higher
