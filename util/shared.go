@@ -80,8 +80,8 @@ func CalculateHash(block Block) string {
 // CalculateHashBytes calculates the hash of a Block.
 func CalculateHashBytes(b Block) []byte {
 	return ShasumBytes(
-		[]byte(strconv.FormatInt(b.Index, 10) + strconv.FormatInt(b.Timestamp, 10) + b.Data + b.PrevHash + b.Solution + b.Solver +
-			b.Tx.Data + b.Tx.Sender + b.Tx.Receiver + strconv.FormatInt(b.Tx.Amount, 10) + b.Tx.Signature,
+		[]byte(strconv.FormatInt(b.Index, 10) + strconv.FormatInt(b.Timestamp, 10) + b.Data + b.PrevHash + b.Solution + b.Solver + // b.Hash is left out cause that's what's set later as the result of this func
+			b.Tx.Data + b.Tx.Sender + b.Tx.Receiver + strconv.FormatInt(b.Tx.Amount, 10), // notice b.Tx.Signature is left out, that's also set later depending on this func's result
 		),
 	)
 }

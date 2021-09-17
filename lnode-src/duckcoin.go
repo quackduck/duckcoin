@@ -38,7 +38,7 @@ var (
 
 func main() {
 	Past100Durations = append(Past100Durations, TargetDuration)
-	Difficulty = 1048576
+	Difficulty = 1048576 * 6
 
 	if !fileExists(BlockchainFile) {
 		if err := setupNewBlockchain(); err != nil {

@@ -181,10 +181,9 @@ func makeBlock(blockChan chan util.Block, privkey string, data string, solver st
 	target := util.GetTarget(Difficulty)
 
 	oldBlock := <-blockChan
-
+Restart:
 	t := time.Now()
 	newBlock.Timestamp = t.UnixMilli()
-Restart:
 	newBlock.Index = oldBlock.Index + 1
 	newBlock.Data = data
 	newBlock.PrevHash = oldBlock.Hash
@@ -198,8 +197,6 @@ Restart:
 		newBlock.Tx.PubKey = ""
 		newBlock.Tx.Signature = ""
 	}
-
-	hashRateStartTime := time.Now()
 	var i int64
 Mine:
 	for i = 0; ; i++ { // stuff in this loop needs to be super optimized
@@ -212,7 +209,7 @@ Mine:
 		default:
 			newBlock.Solution = strconv.FormatInt(i, 10)
 			if i&(1<<17-1) == 0 && i != 0 { // optimize to check every 131072 iterations (bitwise ops are faster)
-				fmt.Printf("Approx hashrate: %0.2f. Have checked %d hashes.\n", float64(i)/time.Since(hashRateStartTime).Seconds(), i)
+				fmt.Printf("Approx hashrate: %0.2f. Have checked %d hashes.\n", float64(i)/time.Since(t).Seconds(), i)
 			}
 			if !util.IsHashValidBytes(util.CalculateHashBytes(newBlock), target) {
 				continue
@@ -282,7 +279,7 @@ func loadDifficultyAndURL() error {
 func parseArgs() {
 	if ok, _ := util.ArgsHaveOption("help", "h"); ok {
 		fmt.Println(HelpMsg)
-		return
+		os.Exit(0)
 	}
 	if ok, i := util.ArgsHaveOption("to", "t"); ok {
 		if len(os.Args) < i+2 {
@@ -319,7 +316,7 @@ func parseArgs() {
 		}
 		ArgAmount = int64(ducks * float64(util.MicroquacksPerDuck))
 	}
-	if len(os.Args) > 1 {
+	if len(os.Args) > 1 && !strings.HasPrefix(os.Args[1], "-") {
 		i, err := strconv.ParseInt(os.Args[1], 10, 64)
 		if err == nil {
 			ArgNumOfBlocks = i
