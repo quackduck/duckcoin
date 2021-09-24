@@ -30,19 +30,13 @@ func main() {
 	util.DBInit()
 
 	Past100Durations = append(Past100Durations, TargetDuration)
-	Difficulty = 1048
+	Difficulty = 1048576 * 6
 
-	//if !fileExists(BlockchainFile) {
-	//	if err := setupNewBlockchain(); err != nil {
-	//		fmt.Println("error: ", err)
-	//		return
-	//	}
-	//} else {
 	if err := setup(); err != nil {
 		fmt.Println("error: ", err)
 		return
 	}
-	//}
+
 	m := mux.NewRouter()
 	m.HandleFunc("/blocks", handleGetBlocks).Methods("GET")
 	m.HandleFunc("/balances", handleGetBalances).Methods("GET")
@@ -94,51 +88,6 @@ func setup() error {
 	return nil
 }
 
-//func setupNewBlockchain() error {
-//	t := time.Now() // genesis time
-//	genesisBlock := util.Block{
-//		Index:     0,
-//		Timestamp: uint64(t.Unix()),
-//		Data:      "Genesis block. Thank you so much to Jason Antwi-Appah for the incredible name that is Duckcoin. QUACK!",
-//		Hash:      "",
-//		PrevHash:  "🐤",
-//		Solution:  "Go Gophers and DUCKS! github.com/quackduck",
-//		Solver:    "Ishan Goel (quackduck on GitHub)",
-//		Tx: util.Transaction{
-//			Data: "Genesis transaction",
-//		},
-//	}
-//
-//	genesisBlock.Hash = util.CalculateHash(genesisBlock)
-//	fmt.Println(util.ToJSON(genesisBlock))
-//	f, err := os.Create(BlockchainFile)
-//	if err != nil {
-//		return err
-//	}
-//	_, err = f.Write([]byte(util.ToJSON([]util.Block{genesisBlock})))
-//	if err != nil {
-//		return err
-//	}
-//	err = f.Close()
-//	if err != nil {
-//		return err
-//	}
-//
-//	NewestBlock = genesisBlock
-//	err = ioutil.WriteFile(NewestBlockFile, []byte(util.ToJSON(NewestBlock)), 0755)
-//	if err != nil {
-//		return err
-//	}
-//	if err != nil {
-//		return err
-//	}
-//	err = ioutil.WriteFile(BalancesFile, []byte(util.ToJSON(Balances)), 0755)
-//	if err != nil {
-//		return err
-//	}
-//	return nil
-//}
-
 func addBlockToChain(b *util.Block) {
 	fmt.Println("Adding a block with hash:", b.Hash+". This one came in", time.Since(NewestBlockTime), "after the previous block.")
 
@@ -151,75 +100,9 @@ func addBlockToChain(b *util.Block) {
 	util.WriteBlockDB(b)
 	NewestBlockTime = time.Now()
 	NewestBlock = b
-
-	//err := truncateFile(BlockchainFile, 2) // remove the last two parts (the bracket and the newline)
-	//if err != nil {
-	//	fmt.Println("Could not truncate", BlockchainFile)
-	//	return
-	//}
-	//f, err := os.OpenFile(BlockchainFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0755)
-	//if err != nil {
-	//	fmt.Println("Could not open", BlockchainFile)
-	//	return
-	//}
-	//bytes, err := json.MarshalIndent(b, "   ", "   ")
-	//if err != nil {
-	//	fmt.Println("Could not marshal block to JSON")
-	//	return
-	//}
-	//_, err = f.Write(append(append([]byte(",\n   "), bytes...), "\n]"...))
-	//if err != nil {
-	//	fmt.Println("Could not write to", BlockchainFile)
-	//}
-	//err = f.Close()
-	//if err != nil {
-	//	fmt.Println("error: ", err)
-	//	return
-	//}
-	//
-	//err = ioutil.WriteFile(NewestBlockFile, []byte(util.ToJSON(b)), 0755)
-	//if err != nil {
-	//	fmt.Println("Could not write to", NewestBlockFile)
-	//}
-	//err = ioutil.WriteFile(BalancesFile, []byte(util.ToJSON(Balances)), 0755)
-	//if err != nil {
-	//	fmt.Println("Could not write to", BalancesFile)
-	//}
 }
 
-//func fileExists(filename string) bool {
-//	info, err := os.Stat(filename)
-//	if os.IsNotExist(err) {
-//		return false
-//	}
-//	return !info.IsDir()
-//}
-
-//func truncateFile(name string, bytesToRemove int64) error {
-//	fi, err := os.Stat(name)
-//	if err != nil {
-//		return err
-//	}
-//	if fi.Size() < bytesToRemove {
-//		return nil
-//	}
-//	return os.Truncate(name, fi.Size()-bytesToRemove)
-//}
-
 func handleGetBlocks(w http.ResponseWriter, r *http.Request) {
-	//f, err := os.Open(BlockchainFile)
-	//if err != nil {
-	//	http.Error(w, err.Error(), http.StatusInternalServerError)
-	//	return
-	//}
-	//defer f.Close()
-	//s, err := f.Stat()
-	//if err != nil {
-	//	http.Error(w, err.Error(), http.StatusInternalServerError)
-	//	return
-	//}
-
-	//w.Header().Set("Content-Length", strconv.FormatInt(s.Size(), 10))
 	w.Header().Set("Connection", "keep-alive")
 
 	var i uint64
@@ -241,11 +124,6 @@ func handleGetBlocks(w http.ResponseWriter, r *http.Request) {
 
 func handleGetBalances(w http.ResponseWriter, _ *http.Request) {
 	balancesNew := util.GetAllBalancesFloats()
-
-	//for address, balance := range Balances {
-	//	balancesNew[address] = float64(balance) / float64(util.MicroquacksPerDuck)
-	//}
-
 	bytes, err := json.MarshalIndent(balancesNew, "", "  ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -367,7 +245,6 @@ func isValid(newBlock, oldBlock *util.Block) error {
 				return errors.New("Invalid signature")
 			}
 		}
-		//if newBlock.Tx.Sender == newBlock.Solver {
 		senderBalance, err := util.GetBalanceByAddr(newBlock.Tx.Sender)
 		if err != nil {
 			return errors.New("Internal Server Error")
@@ -375,11 +252,6 @@ func isValid(newBlock, oldBlock *util.Block) error {
 		if senderBalance < newBlock.Tx.Amount { // notice that there is no reward for this block's PoW added to the sender's account first
 			return errors.New(fmt.Sprintf("Insufficient balance %d microquacks (sender balance) is less than %d microquacks (tx amount)", senderBalance, newBlock.Tx.Amount))
 		}
-		//} else {
-		//	if Balances[newBlock.Tx.Sender] < newBlock.Tx.Amount {
-		//		return errors.New("Insufficient balance")
-		//	}
-		//}
 	}
 	return nil
 }
