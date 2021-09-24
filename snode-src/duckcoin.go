@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jwalton/gchalk" // color library
+	"github.com/jwalton/gchalk"
 	"github.com/quackduck/duckcoin/util"
 )
 
@@ -29,7 +28,7 @@ var (
 	// Difficulty is the number of hashes needed for a block to be valid on average.
 	//
 	// See util.GetTarget for more information on the relationship between targets and Difficulty.
-	Difficulty int64
+	Difficulty uint64
 
 	Pubkey  string
 	Privkey string
@@ -37,8 +36,8 @@ var (
 
 	ArgReceiver    string // command line arguments
 	ArgMessage     string
-	ArgAmount      int64
-	ArgNumOfBlocks int64 = math.MaxInt64
+	ArgAmount      uint64
+	ArgNumOfBlocks uint64 = math.MaxUint64
 
 	HelpMsg = `Duckcoin - quack money
 
@@ -60,6 +59,8 @@ Examples:
 
 For more info go to https://github.com/quackduck/duckcoin`
 )
+
+// TODO: consider sending blocks in a really efficient binary way (like BTC and probably literally every other crypto)
 
 func main() {
 	var err error
@@ -106,8 +107,8 @@ func main() {
 
 // mine mines numOfBlocks blocks, with the Transaction's arbitrary data field set to data if amount is not 0.
 // It also takes in the receiver's Address and amount to send in each block, if amount is not 0
-func mine(numOfBlocks, amount int64, receiver, blockData, txData string) {
-	var i int64
+func mine(numOfBlocks, amount uint64, receiver, blockData, txData string) {
+	var i uint64
 	var b util.Block
 	for ; i < numOfBlocks; i++ {
 		doneChan := make(chan interface{}, 1)
@@ -171,7 +172,7 @@ func mine(numOfBlocks, amount int64, receiver, blockData, txData string) {
 //
 // makeBlock also fills in the transaction's Signature field and the block's Hash field
 func makeBlock(blockChan chan util.Block, privkey string, data string, solver string, tx util.Transaction) {
-	var newBlock util.Block
+	newBlock := new(util.Block)
 
 	err := loadDifficultyAndURL()
 	if err != nil {
@@ -183,7 +184,7 @@ func makeBlock(blockChan chan util.Block, privkey string, data string, solver st
 	oldBlock := <-blockChan
 Restart:
 	t := time.Now()
-	newBlock.Timestamp = t.UnixMilli()
+	newBlock.Timestamp = uint64(t.UnixMilli())
 	newBlock.Index = oldBlock.Index + 1
 	newBlock.Data = data
 	newBlock.PrevHash = oldBlock.Hash
@@ -225,11 +226,12 @@ Mine:
 					newBlock.Tx.Signature = signature
 				}
 				fmt.Println(gchalk.BrightYellow(util.ToJSON(newBlock)))
-				j, jerr := json.Marshal(newBlock)
-				if jerr != nil {
-					fmt.Println(jerr)
-				}
-				r, err := http.Post(URL+"/blocks/new", "application/json", bytes.NewReader(j))
+				//j, jerr := json.Marshal(newBlock)
+				//if jerr != nil {
+				//	fmt.Println(jerr)
+				//}
+				//fmt.Println("sending", util.ToJSON(newBlock))
+				r, err := http.Post(URL+"/blocks/new", "application/json", strings.NewReader(util.ToJSON(newBlock)))
 				if err != nil {
 					fmt.Println(err)
 					return
@@ -269,10 +271,11 @@ func loadDifficultyAndURL() error {
 	if err != nil {
 		return err
 	}
-	Difficulty, err = strconv.ParseInt(string(b), 10, 64)
+	difficultyInt64, err := strconv.ParseInt(string(b), 10, 64)
 	if err != nil {
 		return err
 	}
+	Difficulty = uint64(difficultyInt64)
 	return nil
 }
 
@@ -314,12 +317,12 @@ func parseArgs() {
 			fmt.Println(err)
 			return
 		}
-		ArgAmount = int64(ducks * float64(util.MicroquacksPerDuck))
+		ArgAmount = uint64(ducks * float64(util.MicroquacksPerDuck))
 	}
 	if len(os.Args) > 1 && !strings.HasPrefix(os.Args[1], "-") {
 		i, err := strconv.ParseInt(os.Args[1], 10, 64)
 		if err == nil {
-			ArgNumOfBlocks = i
+			ArgNumOfBlocks = uint64(i)
 		} else {
 			fmt.Println(err)
 			return
