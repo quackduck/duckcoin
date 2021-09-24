@@ -20,16 +20,16 @@ import (
 const (
 	// MicroquacksPerDuck is the number of microquacks equal to one duck.
 	// A microquack is a billionth of a quack, which is a hundredth of a duck.
-	MicroquacksPerDuck int64 = 1e8
+	MicroquacksPerDuck uint64 = 1e8
 )
 
 // A Block represents data optionally with a transaction including proof of work,
 // which makes it really hard to rewrite the blockchain.
 type Block struct {
 	// Index is the Block number
-	Index int64
+	Index uint64
 	// Timestamp is the Unix timestamp in milliseconds of the date of creation of this Block
-	Timestamp int64
+	Timestamp uint64
 	// Data stores any (arbitrary) additional data >= 250 kb long.
 	Data string
 	//Hash stores the hash as computed by CalculateHash
@@ -53,7 +53,7 @@ type Transaction struct {
 	//Receiver is the address of the receiver.
 	Receiver string `json:",omitempty"`
 	//Amount is the amount to be payed by the Sender to the Receiver. It is always a positive number.
-	Amount int64 `json:",omitempty"`
+	Amount uint64 `json:",omitempty"`
 	//PubKey is the Duckcoin formatted public key of the sender
 	PubKey    string `json:",omitempty"`
 	Signature string `json:",omitempty"`
@@ -62,26 +62,26 @@ type Transaction struct {
 // GetTarget returns a "target" which block hashes must be lower than to be valid.
 // This is calculated such that miners will need to compute difficulty hashes on average
 // for a valid hash.
-func GetTarget(difficulty int64) *big.Int {
+func GetTarget(difficulty uint64) *big.Int {
 	d := new(big.Int)
 	// this is the number of possible hashes: 16^64 = 2^256
 	d.Lsh(big.NewInt(1), 256)
 	// now divide by t so that there's a 1/t chance that a hash is smaller than Difficulty
 	// this works because the total pool of valid hashes will become t times smaller than the max size
-	d.Quo(d, big.NewInt(difficulty))
+	d.Quo(d, big.NewInt(int64(difficulty)))
 	return d
 }
 
 // CalculateHash calculates the hash of a Block.
-func CalculateHash(block Block) string {
+func CalculateHash(block *Block) string {
 	return hex.EncodeToString(CalculateHashBytes(block))
 }
 
 // CalculateHashBytes calculates the hash of a Block.
-func CalculateHashBytes(b Block) []byte {
+func CalculateHashBytes(b *Block) []byte {
 	return ShasumBytes(
-		[]byte(strconv.FormatInt(b.Index, 10) + strconv.FormatInt(b.Timestamp, 10) + b.Data + b.PrevHash + b.Solution + b.Solver + // b.Hash is left out cause that's what's set later as the result of this func
-			b.Tx.Data + b.Tx.Sender + b.Tx.Receiver + strconv.FormatInt(b.Tx.Amount, 10), // notice b.Tx.Signature is left out, that's also set later depending on this func's result
+		[]byte(strconv.FormatInt(int64(b.Index), 10) + strconv.FormatInt(int64(b.Timestamp), 10) + b.Data + b.PrevHash + b.Solution + b.Solver + // b.Hash is left out cause that's what's set later as the result of this func
+			b.Tx.Data + b.Tx.Sender + b.Tx.Receiver + strconv.FormatInt(int64(b.Tx.Amount), 10), // notice b.Tx.Signature is left out, that's also set later depending on this func's result
 		),
 	)
 }
@@ -134,11 +134,19 @@ func IsHashValidBytes(hash []byte, target *big.Int) bool {
 	return target.Cmp(d) == 1 // is target greater than d
 }
 
-// ToJSON is a convenience method for serializing to JSON
+// ToJSON is a convenience method for serializing to JSON.
+// Use ToJSONNice for output seen by humans.
 func ToJSON(v interface{}) string {
 	s, _ := json.MarshalIndent(v, "", "   ")
 	return string(s)
 }
+
+//
+//// ToJSONNice serializes to JSON and formats for humans
+//func ToJSONNice(v interface{}) string {
+//	s, _ := json.MarshalIndent(v, "", "   ")
+//	return string(s)
+//}
 
 // ArgsHaveOption checks command line arguments for an option
 func ArgsHaveOption(long string, short string) (hasOption bool, foundAt int) {

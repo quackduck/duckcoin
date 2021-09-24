@@ -7,3 +7,4 @@
 .idea
 /icoin
 .DS_Store
+/lnode-src/chaindata.bolt.db
