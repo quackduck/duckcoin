@@ -175,11 +175,6 @@ func GetBalanceByAddr(addr string) (uint64, error) {
 	return ret, nil
 }
 
-//func GetBalanceByAddrFloat(addr string) (float64, error) {
-//	f, err := GetBalanceByAddr(addr)
-//	return float64(f), err
-//}
-
 func GetAllBalances() (map[string]uint64, error) {
 	ret := make(map[string]uint64, 1000)
 	return ret, db.View(func(tx *bolt.Tx) error {
@@ -232,22 +227,13 @@ func serialize(b *Block) []byte {
 	hashBytes = hash.Bytes()
 	ret = encodeVarintBytes(ret, hashBytes)
 
-	//defer func() {
-	//	if v := recover(); v != nil {
-	//		fmt.Println("Panicked!!! at block number " + fmt.Sprint(b.Index, b, toJSON(b)))
-	//		os.Exit(0)
-	//	}
-	//}()
-
 	ret = encodeVarintBytes(ret, []byte(b.Solution), deb64(b.Solver))
-	//fmt.Println("Now writing tx data. Current len:", len(ret))
 	ret = encodeVarintBytes(ret, []byte(b.Tx.Data), deb64(b.Tx.Sender), deb64(b.Tx.Receiver))
 
 	buf = make([]byte, binary.MaxVarintLen64)
 	n = binary.PutUvarint(buf, uint64(b.Tx.Amount))
 	ret = append(ret, buf[:n]...)
 	ret = encodeVarintBytes(ret, deb64(b.Tx.PubKey), deb64(b.Tx.Signature))
-	//fmt.Println("Final len:", len(ret))
 	return ret
 }
 
@@ -344,7 +330,6 @@ func decodeVarintBytes(readFrom []byte) (newBuf []byte, data []byte) {
 	readFrom = readFrom[length:]
 	dataBytes := make([]byte, 0, dataLen)
 	dataBytes = readFrom[:dataLen]
-	//ret.PrevHash = fmt.Sprintf("%064s", new(big.Int).SetBytes(hashBytes).Text(16))
 	readFrom = readFrom[dataLen:]
 	return readFrom, dataBytes
 }

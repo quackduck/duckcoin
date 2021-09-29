@@ -85,7 +85,7 @@ func main() {
 	}
 
 	Address = util.DuckToAddress(Pubkey)
-	fmt.Println("Mining to this address: ", gchalk.BrightBlue(Address))
+	fmt.Println("Mining to this address:", gchalk.BrightBlue(Address))
 
 	err = loadDifficultyAndURL()
 	if err != nil {
@@ -172,6 +172,9 @@ func mine(numOfBlocks, amount uint64, receiver, blockData, txData string) {
 //
 // makeBlock also fills in the transaction's Signature field and the block's Hash field
 func makeBlock(blockChan chan util.Block, privkey string, data string, solver string, tx util.Transaction) {
+	var lastHashrate float64
+	lastTime := time.Now()
+
 	newBlock := new(util.Block)
 
 	err := loadDifficultyAndURL()
@@ -209,8 +212,23 @@ Mine:
 			}
 		default:
 			newBlock.Solution = strconv.FormatInt(i, 10)
-			if i&(1<<17-1) == 0 && i != 0 { // optimize to check every 131072 iterations (bitwise ops are faster)
-				fmt.Printf("Approx hashrate: %0.2f. Have checked %d hashes.\n", float64(i)/time.Since(t).Seconds(), i)
+			if i&(1<<19-1) == 0 && i != 0 { // optimize to check every 131072*2 iterations (bitwise ops are faster)
+				var arrow string
+				curr := 1 << 19 / time.Since(lastTime).Seconds() / 1000.0 // iterations since last time / time since last time / 1000 = kHashes
+				lastTime = time.Now()
+				//if math.Round(curr/50) < math.Round(lastHashrate/50) {
+				if lastHashrate-curr > 50 {
+					arrow = gchalk.RGB(255, 165, 0)("↓")
+					lastHashrate = curr
+					// } else if math.Round(curr/50) > math.Round(lastHashrate/50) {
+				} else if curr-lastHashrate > 50 {
+					arrow = gchalk.BrightCyan("↑")
+					lastHashrate = curr
+				} else {
+					//arrow = gchalk.BrightYellow("·")
+					arrow = " "
+				}
+				fmt.Printf("%s Rate: %s kHashes/s, Checked hashes: %s\n", arrow, gchalk.BrightYellow(fmt.Sprintf("%0.3g", curr)), gchalk.BrightGreen(fmt.Sprint(i)))
 			}
 			if !util.IsHashValidBytes(util.CalculateHashBytes(newBlock), target) {
 				continue
