@@ -141,13 +141,6 @@ func ToJSON(v interface{}) string {
 	return string(s)
 }
 
-//
-//// ToJSONNice serializes to JSON and formats for humans
-//func ToJSONNice(v interface{}) string {
-//	s, _ := json.MarshalIndent(v, "", "   ")
-//	return string(s)
-//}
-
 // ArgsHaveOption checks command line arguments for an option
 func ArgsHaveOption(long string, short string) (hasOption bool, foundAt int) {
 	for i, arg := range os.Args {
