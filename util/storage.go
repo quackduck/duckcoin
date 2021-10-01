@@ -17,17 +17,24 @@ var (
 
 	Reward uint64 = 1e6
 
-	newestIsGenesis = false
+	newestIsGenesis = false // TODO: store genesis as a normal block
 	genesis         = &Block{
 		Index:     0,
 		Timestamp: 1620739059,
-		Data:      "Genesis block. Thank you so much to Jason Antwi-Appah for the incredible name that is Duckcoin. QUACK!",
-		Hash:      "d01bfc928a8d9523e239efd6db0d3c36cc2be9a1b0d58a3af5854ab1751b5723",
-		PrevHash:  "🐤",
-		Solution:  "Go Gophers and DUCKS! github.com/quackduck",
-		Solver:    "Ishan Goel (quackduck on GitHub)",
+		Data: "Genesis block. Made by Ishan Goel, @quackduck on GitHub. " +
+			"Thank you to Jason Antwi-Appah for the incredible name that is Duckcoin. " +
+			"Thank you to Hack Club, and to the Internet. QUACK!",
+		Hash:     "0000000000000000000000000000000000000000000000000000000000000000",
+		PrevHash: "0000000000000000000000000000000000000000000000000000000000000000",
+		Solution: 42,                                     // the answer to life, the universe, and everything
+		Solver:   "[Q.nSvl+K7RauJ5IagU+ID/slhDoR+hGkmF]", // replace with ishan's actual address
 		Tx: Transaction{
-			Data: "Genesis transaction",
+			Data:      "Genesis transaction",
+			Sender:    "[Q.nSvl+K7RauJ5IagU+ID/slhDoR+hGkmF]",
+			Receiver:  "[Q.nSvl+K7RauJ5IagU+ID/slhDoR+hGkmF]",
+			Amount:    100000 * 1e6,
+			PubKey:    "",
+			Signature: "",
 		},
 	}
 )
@@ -36,7 +43,7 @@ func DBInit() {
 	var err error
 	o := bolt.DefaultOptions
 	o.FreelistType = bolt.FreelistMapType
-	db, err = bolt.Open("chaindata.bolt.db", 0600, o)
+	db, err = bolt.Open("duckchain.db", 0600, o)
 	if err != nil {
 		panic(err)
 	}
@@ -61,15 +68,16 @@ func DBInit() {
 }
 
 func WriteBlockDB(blks ...*Block) {
-	newestIsGenesis = false
 	if err := db.Update(func(tx *bolt.Tx) error {
 		for _, v := range blks {
 			// store the newest block in idx -1
-			if err := tx.Bucket(numToBlock).Put([]byte("-1"), serialize(v)); err != nil {
+			newestIsGenesis = false
+			if err := tx.Bucket(numToBlock).Put([]byte("newest"), serialize(v)); err != nil {
 				panic(err)
 				//return err
 			}
-			num := []byte(strconv.FormatInt(int64(v.Index), 10)) // TODO: serialize num too
+
+			num := []byte(strconv.FormatUint(v.Index, 10)) // TODO: serialize idx num too
 			if err := tx.Bucket(numToBlock).Put(num, serialize(v)); err != nil {
 				panic(err)
 				//return err
@@ -78,37 +86,37 @@ func WriteBlockDB(blks ...*Block) {
 				panic(err)
 				//return err
 			}
-			if v.Tx.Amount > 0 {
+			if v.Tx.Amount > 0 && v.Tx.Sender != v.Tx.Receiver {
 				// no reward for solver so we can give that reward to the lnodes (TODO).
 
-				senderBalanceBytes := tx.Bucket(addrToBalances).Get(deb64(v.Tx.Sender))
+				senderBalanceBytes := tx.Bucket(addrToBalances).Get(serializeAddress(v.Tx.Sender))
 				senderBalance, _ := binary.Uvarint(senderBalanceBytes)
 				if senderBalance < v.Tx.Amount {
 					panic("Insufficient balances " + fmt.Sprintf("Block Num: %d, Sender Balance: %d, Amount: %d, Sender Address: %s", v.Index, senderBalance, v.Tx.Amount, v.Tx.Sender))
 				}
 				senderBalance -= v.Tx.Amount
 
-				receiverBalanceBytes := tx.Bucket(addrToBalances).Get(deb64(v.Tx.Receiver))
+				receiverBalanceBytes := tx.Bucket(addrToBalances).Get(serializeAddress(v.Tx.Receiver))
 				receiverBalance, _ := binary.Uvarint(receiverBalanceBytes)
 				receiverBalance += v.Tx.Amount
 
 				buf := make([]byte, binary.MaxVarintLen64)
 				n := binary.PutUvarint(buf, senderBalance)
-				if err := tx.Bucket(addrToBalances).Put(deb64(v.Tx.Sender), buf[:n]); err != nil {
+				if err := tx.Bucket(addrToBalances).Put(serializeAddress(v.Tx.Sender), buf[:n]); err != nil {
 					panic(err)
 				}
 				buf = make([]byte, binary.MaxVarintLen64)
 				n = binary.PutUvarint(buf, receiverBalance)
-				if err := tx.Bucket(addrToBalances).Put(deb64(v.Tx.Receiver), buf[:n]); err != nil {
+				if err := tx.Bucket(addrToBalances).Put(serializeAddress(v.Tx.Receiver), buf[:n]); err != nil {
 					panic(err)
 				}
 			} else {
-				solverBalanceBytes := tx.Bucket(addrToBalances).Get(deb64(v.Solver))
+				solverBalanceBytes := tx.Bucket(addrToBalances).Get(serializeAddress(v.Solver))
 				solverBalance, _ := binary.Uvarint(solverBalanceBytes)
 				solverBalance += Reward
 				buf := make([]byte, binary.MaxVarintLen64)
 				n := binary.PutUvarint(buf, solverBalance)
-				if err := tx.Bucket(addrToBalances).Put(deb64(v.Solver), buf[:n]); err != nil {
+				if err := tx.Bucket(addrToBalances).Put(serializeAddress(v.Solver), buf[:n]); err != nil {
 					panic(err)
 				}
 			}
@@ -119,17 +127,17 @@ func WriteBlockDB(blks ...*Block) {
 	}
 }
 
-func GetBlockByIndex(i int64) (*Block, error) {
+func GetBlockByIndex(i uint64) (*Block, error) {
 	if i == 0 {
 		return genesis, nil
 	}
 	ret := new(Block)
 	if err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(numToBlock)
-		data := b.Get([]byte(strconv.FormatInt(i, 10)))
+		data := b.Get([]byte(strconv.FormatUint(i, 10)))
 		ret = deserialize(data)
 		if ret == nil {
-			panic("Nil deserialization at block " + strconv.FormatInt(i, 10))
+			panic("Nil deserialization at block " + strconv.FormatUint(i, 10))
 		}
 		return nil
 	}); err != nil {
@@ -143,7 +151,7 @@ func GetBlockByHash(hash string) (*Block, error) {
 	if err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(hashToNum)
 		data := b.Get(serializeHash(hash))
-		i, err := strconv.ParseInt(string(data), 10, 64)
+		i, err := strconv.ParseUint(string(data), 10, 64)
 		if err != nil {
 			return err
 		}
@@ -159,14 +167,26 @@ func GetNewestBlock() (*Block, error) {
 	if newestIsGenesis {
 		return genesis, nil
 	}
-	return GetBlockByIndex(-1)
+	ret := new(Block)
+	if err := db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(numToBlock)
+		data := b.Get([]byte("newest"))
+		ret = deserialize(data)
+		if ret == nil {
+			panic("Nil deserialization at newest block")
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return ret, nil
 }
 
 func GetBalanceByAddr(addr string) (uint64, error) {
 	var ret uint64
 	if err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(addrToBalances)
-		data := b.Get(deb64(addr))
+		data := b.Get(serializeAddress(addr))
 		ret, _ = binary.Uvarint(data)
 		return nil
 	}); err != nil {
@@ -181,7 +201,7 @@ func GetAllBalances() (map[string]uint64, error) {
 		b := tx.Bucket(addrToBalances)
 		return b.ForEach(func(addr, balanceData []byte) error {
 			balance, _ := binary.Uvarint(balanceData)
-			ret[b64(addr)] = balance
+			ret[deserializeAddress(addr)] = balance
 			return nil
 		})
 	})
@@ -207,11 +227,7 @@ func serialize(b *Block) []byte {
 	n = binary.PutUvarint(buf, b.Timestamp)
 	ret = append(ret, buf[:n]...)
 
-	buf = make([]byte, binary.MaxVarintLen64)
-	n = binary.PutUvarint(buf, uint64(len(b.Data)))
-	ret = append(ret, buf[:n]...)
-
-	ret = append(ret, b.Data...)
+	ret = encodeVarintBytes(ret, []byte(b.Data))
 
 	hash, ok := new(big.Int).SetString(b.Hash, 16)
 	if !ok {
@@ -227,14 +243,33 @@ func serialize(b *Block) []byte {
 	hashBytes = hash.Bytes()
 	ret = encodeVarintBytes(ret, hashBytes)
 
-	ret = encodeVarintBytes(ret, []byte(b.Solution), deb64(b.Solver))
-	ret = encodeVarintBytes(ret, []byte(b.Tx.Data), deb64(b.Tx.Sender), deb64(b.Tx.Receiver))
-
 	buf = make([]byte, binary.MaxVarintLen64)
-	n = binary.PutUvarint(buf, uint64(b.Tx.Amount))
+	n = binary.PutUvarint(buf, b.Solution)
 	ret = append(ret, buf[:n]...)
-	ret = encodeVarintBytes(ret, deb64(b.Tx.PubKey), deb64(b.Tx.Signature))
+
+	ret = encodeVarintBytes(ret, serializeAddress(b.Solver))
+	if b.Tx.Amount != 0 {
+		ret = append(ret, 1) // marker that Tx exists and should be deserialized
+		ret = encodeVarintBytes(ret, []byte(b.Tx.Data), serializeAddress(b.Tx.Sender), serializeAddress(b.Tx.Receiver))
+
+		buf = make([]byte, binary.MaxVarintLen64)
+		n = binary.PutUvarint(buf, b.Tx.Amount)
+		ret = append(ret, buf[:n]...)
+		ret = encodeVarintBytes(ret, deb64(b.Tx.PubKey), deb64(b.Tx.Signature))
+	} else {
+		ret = append(ret, 0) // marker that Tx does not exist and should not be deserialized
+	}
 	return ret
+}
+
+func serializeAddress(addr string) []byte {
+	// serialized format: version char + decoded base64
+	// addr format: [Q + version char + base64(shasum(pubkey)[:20]) + ]
+	return append([]byte{addr[2]}, deb64(addr[3:len(addr)-1])...)
+}
+
+func deserializeAddress(addrBytes []byte) string {
+	return "[Q" + string(addrBytes[0]) + b64(addrBytes[1:]) + "]"
 }
 
 func serializeHash(hash string) []byte {
@@ -243,11 +278,6 @@ func serializeHash(hash string) []byte {
 		panic("Setting big.Int to hash value as hexadecimal failed")
 	}
 	return encodeVarintBytes(make([]byte, 0, 10), hashInt.Bytes())
-}
-
-func deserializeHash(b []byte) string {
-	_, data := decodeVarintBytes(b)
-	return fmt.Sprintf("%064s", new(big.Int).SetBytes(data).Text(16))
 }
 
 func encodeVarintBytes(writeTo []byte, data ...[]byte) []byte {
@@ -262,6 +292,9 @@ func encodeVarintBytes(writeTo []byte, data ...[]byte) []byte {
 }
 
 func deserialize(buf []byte) *Block {
+	if len(buf) == 0 {
+		return nil
+	}
 	var data []byte
 	ret := new(Block)
 
@@ -282,37 +315,42 @@ func deserialize(buf []byte) *Block {
 	buf, data = decodeVarintBytes(buf)
 	ret.PrevHash = fmt.Sprintf("%064s", new(big.Int).SetBytes(data).Text(16))
 
-	buf, data = decodeVarintBytes(buf)
-	ret.Solution = string(data)
-
-	buf, data = decodeVarintBytes(buf)
-	ret.Solver = b64(data)
-
-	buf, data = decodeVarintBytes(buf)
-	ret.Tx.Data = string(data)
-
-	buf, data = decodeVarintBytes(buf)
-	ret.Tx.Sender = b64(data)
-
-	buf, data = decodeVarintBytes(buf)
-	ret.Tx.Receiver = b64(data)
-
 	i, length = binary.Uvarint(buf)
-	ret.Tx.Amount = i
+	ret.Timestamp = i
 	buf = buf[length:]
+	ret.Solution = i
 
 	buf, data = decodeVarintBytes(buf)
-	ret.Tx.PubKey = b64(data)
+	ret.Solver = deserializeAddress(data)
 
-	buf, data = decodeVarintBytes(buf)
-	ret.Tx.Signature = b64(data)
+	if buf[0] == 1 { // marker that tx data exists
+		buf = buf[1:]
+		buf, data = decodeVarintBytes(buf)
+		ret.Tx.Data = string(data)
+
+		buf, data = decodeVarintBytes(buf)
+		ret.Tx.Sender = deserializeAddress(data)
+
+		buf, data = decodeVarintBytes(buf)
+		ret.Tx.Receiver = deserializeAddress(data)
+
+		i, length = binary.Uvarint(buf)
+		ret.Tx.Amount = i
+		buf = buf[length:]
+
+		buf, data = decodeVarintBytes(buf)
+		ret.Tx.PubKey = b64(data)
+
+		buf, data = decodeVarintBytes(buf)
+		ret.Tx.Signature = b64(data)
+	}
 	return ret
 }
 
 func deb64(s string) []byte {
 	b, err := base64.StdEncoding.DecodeString(s)
 	if err != nil {
-		fmt.Println(s, err, string(s[40]), []byte(s), s[40])
+		//fmt.Println(s, err)
 		panic(err)
 	}
 	return b

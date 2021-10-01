@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"os"
 	"strconv"
+	"strings"
 )
 
 const (
@@ -37,8 +38,8 @@ type Block struct {
 	// PrevHash is the hash of the previous Block in the Blockchain
 	PrevHash string
 	// Solution is the nonce value that makes the Hash have a prefix of Difficulty zeros
-	Solution string
-	// Solver is the address of the sender
+	Solution uint64
+	// Solver is the address of the sender. Address format: [Q + version char + base64(shasum(pubkey)[:20]) + ]
 	Solver string
 	// Transaction is the transaction associated with this block
 	Tx Transaction `json:",omitempty"`
@@ -79,9 +80,16 @@ func CalculateHash(block *Block) string {
 
 // CalculateHashBytes calculates the hash of a Block.
 func CalculateHashBytes(b *Block) []byte {
+	//return ShasumBytes(
+	//	append(new(big.Int).SetUint64(b.Index).Bytes(),
+	//		append(new(big.Int).SetUint64(b.Timestamp).Bytes(),
+	//			append([]byte(b.Data+b.PrevHash),
+	//				append(new(big.Int).SetUint64(b.Solution).Bytes(),
+	//					append([]byte(b.Solver+b.Tx.Data+b.Tx.Sender+b.Tx.Receiver),
+	//						new(big.Int).SetUint64(b.Tx.Amount).Bytes()...)...)...)...)...))
 	return ShasumBytes(
-		[]byte(strconv.FormatInt(int64(b.Index), 10) + strconv.FormatInt(int64(b.Timestamp), 10) + b.Data + b.PrevHash + b.Solution + b.Solver + // b.Hash is left out cause that's what's set later as the result of this func
-			b.Tx.Data + b.Tx.Sender + b.Tx.Receiver + strconv.FormatInt(int64(b.Tx.Amount), 10), // notice b.Tx.Signature is left out, that's also set later depending on this func's result
+		[]byte(strconv.FormatUint(b.Index, 10) + strconv.FormatUint(b.Timestamp, 10) + b.Data + b.PrevHash + strconv.FormatUint(b.Solution, 10) + b.Solver + // b.Hash is left out cause that's what's set later as the result of this func
+			b.Tx.Data + b.Tx.Sender + b.Tx.Receiver + strconv.FormatUint(b.Tx.Amount, 10), // notice b.Tx.Signature is left out, that's also set later depending on this function's result
 		),
 	)
 }
@@ -154,7 +162,41 @@ func ArgsHaveOption(long string, short string) (hasOption bool, foundAt int) {
 // DuckToAddress converts a Duckcoin public key to a Duckcoin address.
 func DuckToAddress(key string) string {
 	hash := sha256.Sum256([]byte(key))
-	return base64.StdEncoding.EncodeToString(hash[:])
+	//return new(big.Int).SetBytes(addChecksum(hash[:20])).Text(60)
+	return "[Q." + base64.StdEncoding.EncodeToString(addChecksum(hash[:20])) + "]" // 20 + 4 bytes
+}
+
+var checksumLen = 4
+
+func addChecksum(data []byte) []byte {
+	dataCopy := make([]byte, len(data), cap(data))
+	copy(dataCopy, data) // don't modify original data
+
+	hash := sha256.Sum256(data)
+	return append(dataCopy, hash[:checksumLen]...)
+}
+
+func verifyChecksumData(data []byte) bool {
+	if len(data) < checksumLen { // == checksumLen is fine
+		return false
+	}
+	b := string(data) == string(addChecksum(data[:len(data)-checksumLen]))
+	return b // hack to compare byte slices by byte values
+}
+
+// IsAddressValid verifies the checksum built into addresses, and checks the address format
+func IsAddressValid(addr string) bool {
+	if !strings.HasPrefix(addr, "[Q") {
+		return false
+	}
+	if !strings.HasSuffix(addr, "]") {
+		return false
+	}
+	b, err := base64.StdEncoding.DecodeString(strings.TrimSuffix(strings.TrimPrefix(addr, "[Q"), "]")[1:]) // remove prefixes plus one byte (may be used later to store version info)
+	if err != nil {
+		return false
+	}
+	return verifyChecksumData(b)
 }
 
 // CheckSignature checks if signature decodes to message using pubkey. This is useful in verifying identities.

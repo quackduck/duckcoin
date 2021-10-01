@@ -30,7 +30,7 @@ func main() {
 	util.DBInit()
 
 	Past100Durations = append(Past100Durations, TargetDuration)
-	Difficulty = 1048576 * 6
+	Difficulty = 1048576 * 1
 
 	if err := setup(); err != nil {
 		fmt.Println("error: ", err)
@@ -108,7 +108,7 @@ func handleGetBlocks(w http.ResponseWriter, r *http.Request) {
 	var i uint64
 	blockData := make([]byte, 0, 500*1024)
 	for i = 0; i <= NewestBlock.Index; i++ {
-		b, err := util.GetBlockByIndex(int64(i))
+		b, err := util.GetBlockByIndex(i)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -137,12 +137,12 @@ func handleGetBalances(w http.ResponseWriter, _ *http.Request) {
 }
 
 func handleGetNewest(w http.ResponseWriter, _ *http.Request) {
-	newestBlock, err := util.GetNewestBlock()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	bytes, err := json.MarshalIndent(newestBlock, "", "  ")
+	//newestBlock, err := util.GetNewestBlock()
+	//if err != nil {
+	//	http.Error(w, err.Error(), http.StatusInternalServerError)
+	//	return
+	//}
+	bytes, err := json.MarshalIndent(NewestBlock, "", "  ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -213,13 +213,8 @@ func isValid(newBlock, oldBlock *util.Block) error {
 	if uint64(time.Now().UnixMilli())-newBlock.Timestamp > 1e3*60*5 { // 5 minutes in millis
 		return errors.New("Block timestamp is not within 5 minutes before current time. What are you trying to pull off here?")
 	}
-
-	if !util.IsValidBase64(newBlock.Solver) ||
-		!util.IsValidBase64(newBlock.Tx.Sender) ||
-		!util.IsValidBase64(newBlock.Tx.Receiver) ||
-		!util.IsValidBase64(newBlock.Tx.PubKey) ||
-		!util.IsValidBase64(newBlock.Tx.Signature) {
-		return errors.New("One or more of the Solver, Sender, Receiver, PubKey or Signature is not valid base64. What are you trying to pull here?")
+	if !util.IsAddressValid(newBlock.Solver) {
+		return errors.New("Sender is invalid")
 	}
 
 	if util.CalculateHash(newBlock) != newBlock.Hash {
@@ -235,6 +230,10 @@ func isValid(newBlock, oldBlock *util.Block) error {
 		return errors.New("Transaction's Data field is too large. Should be >= 250 kb")
 	}
 	if newBlock.Tx.Amount > 0 {
+		if !util.IsAddressValid(newBlock.Tx.Sender) || !util.IsAddressValid(newBlock.Tx.Receiver) || !util.IsValidBase64(newBlock.Tx.PubKey) ||
+			!util.IsValidBase64(newBlock.Tx.Signature) {
+			return errors.New("At least one of the Sender, Receiver, PubKey or Signature is not valid. What are you trying to pull here?")
+		}
 		if util.DuckToAddress(newBlock.Tx.PubKey) != newBlock.Tx.Sender {
 			return errors.New("Pubkey does not match sender address")
 		}

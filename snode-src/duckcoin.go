@@ -94,9 +94,9 @@ func main() {
 	}
 	blockMsg := ""
 	if Username == "" {
-		blockMsg = "Mined using the official Duckcoin CLI"
+		blockMsg = ""
 	} else {
-		blockMsg = "Mined by the official Duckcoin CLI User: " + Username
+		blockMsg = Username
 	}
 	if ArgAmount == 0 && ArgMessage != "" { // non tx block, user supplied message
 		blockMsg = ArgMessage
@@ -201,9 +201,9 @@ Restart:
 		newBlock.Tx.PubKey = ""
 		newBlock.Tx.Signature = ""
 	}
-	var i int64
+	//var i uint64
 Mine:
-	for i = 0; ; i++ { // stuff in this loop needs to be super optimized
+	for i := uint64(0); ; i++ { // stuff in this loop needs to be super optimized
 		select {
 		case b := <-blockChan:
 			if oldBlock != b {
@@ -211,7 +211,7 @@ Mine:
 				goto Restart
 			}
 		default:
-			newBlock.Solution = strconv.FormatInt(i, 10)
+			newBlock.Solution = i
 			if i&(1<<19-1) == 0 && i != 0 { // optimize to check every 131072*2 iterations (bitwise ops are faster)
 				var arrow string
 				curr := 1 << 19 / time.Since(lastTime).Seconds() / 1000.0 // iterations since last time / time since last time / 1000 = kHashes
@@ -305,35 +305,33 @@ func parseArgs() {
 	if ok, i := util.ArgsHaveOption("to", "t"); ok {
 		if len(os.Args) < i+2 {
 			fmt.Println("Too few arguments to --to")
-			return
+			os.Exit(1)
 		}
 		ArgReceiver = os.Args[i+1]
-
-		if !util.IsValidBase64(ArgReceiver) || len(ArgReceiver) != 44 {
-			fmt.Println("error: invalid receiver address")
-			return
+		if !util.IsAddressValid(ArgReceiver) {
+			fmt.Println("error: invalid receiver address, check if you mistyped it")
+			os.Exit(1)
 		}
 	}
 	if ok, _ := util.ArgsHaveOption("hide-user", "s"); ok {
 		Username = ""
-		return
 	}
 	if ok, i := util.ArgsHaveOption("message", "m"); ok {
 		if len(os.Args) < i+2 {
 			fmt.Println("Too few arguments to --message")
-			return
+			os.Exit(1)
 		}
 		ArgMessage = os.Args[i+1]
 	}
 	if ok, i := util.ArgsHaveOption("amount", "a"); ok {
 		if len(os.Args) < i+2 {
 			fmt.Println("Too few arguments to --amount")
-			return
+			os.Exit(1)
 		}
 		ducks, err := strconv.ParseFloat(os.Args[i+1], 64)
 		if err != nil {
 			fmt.Println(err)
-			return
+			os.Exit(1)
 		}
 		ArgAmount = uint64(ducks * float64(util.MicroquacksPerDuck))
 	}
@@ -343,7 +341,7 @@ func parseArgs() {
 			ArgNumOfBlocks = uint64(i)
 		} else {
 			fmt.Println(err)
-			return
+			os.Exit(1)
 		}
 	}
 }
