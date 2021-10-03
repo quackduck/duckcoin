@@ -3,6 +3,7 @@ package util
 import (
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	bolt "go.etcd.io/bbolt"
 	"math/big"
@@ -20,22 +21,25 @@ var (
 	newestIsGenesis = false // TODO: store genesis as a normal block
 	genesis         = &Block{
 		Index:     0,
-		Timestamp: 1620739059,
-		Data: "Genesis block. Made by Ishan Goel, @quackduck on GitHub. " +
-			"Thank you to Jason Antwi-Appah for the incredible name that is Duckcoin. " +
-			"Thank you to Hack Club, and to the Internet. QUACK!",
+		Timestamp: 1633231790000,
+		Data: "This is the genesis block. Made by Ishan Goel: @quackduck on GitHub. " +
+			"Thank you to Jason Antwi-Appah for the name \"Duckcoin\", and to Arcade Wise." +
+			"Thank you to friends at Hack Club, and to the Internet. QUACK!",
 		Hash:     "0000000000000000000000000000000000000000000000000000000000000000",
 		PrevHash: "0000000000000000000000000000000000000000000000000000000000000000",
 		Solution: 42,                                     // the answer to life, the universe, and everything
 		Solver:   "[Q.nSvl+K7RauJ5IagU+ID/slhDoR+hGkmF]", // replace with ishan's actual address
 		Tx: Transaction{
 			Data:      "Genesis transaction",
-			Sender:    "[Q.nSvl+K7RauJ5IagU+ID/slhDoR+hGkmF]",
-			Receiver:  "[Q.nSvl+K7RauJ5IagU+ID/slhDoR+hGkmF]",
+			Sender:    "Q0v8U56+SYVLvWDmzNnmnYfcK1Xh0KxeAx",
+			Receiver:  "Q0v8U56+SYVLvWDmzNnmnYfcK1Xh0KxeAx",
 			Amount:    100000 * 1e6,
 			PubKey:    "",
 			Signature: "",
 		},
+	}
+	genesisBalances = map[string]uint64{
+		"Q0v8U56+SYVLvWDmzNnmnYfcK1Xh0KxeAx": 100 * MicroquacksPerDuck,
 	}
 )
 
@@ -47,7 +51,6 @@ func DBInit() {
 	if err != nil {
 		panic(err)
 	}
-
 	if err = db.Update(func(tx *bolt.Tx) error {
 		if tx.Bucket(numToBlock) == nil {
 			newestIsGenesis = true
@@ -61,6 +64,17 @@ func DBInit() {
 			return err
 		}
 		_, err = tx.CreateBucketIfNotExists(addrToBalances)
+		if err != nil {
+			return err
+		}
+		for k, v := range genesisBalances {
+			buf := make([]byte, binary.MaxVarintLen64)
+			n := binary.PutUvarint(buf, v)
+			err = tx.Bucket(addrToBalances).Put(serializeAddress(k), buf[:n])
+			if err != nil {
+				return err
+			}
+		}
 		return err
 	}); err != nil {
 		panic(err)
@@ -88,43 +102,52 @@ func WriteBlockDB(blks ...*Block) {
 			}
 			if v.Tx.Amount > 0 && v.Tx.Sender != v.Tx.Receiver {
 				// no reward for solver so we can give that reward to the lnodes (TODO).
-
-				senderBalanceBytes := tx.Bucket(addrToBalances).Get(serializeAddress(v.Tx.Sender))
-				senderBalance, _ := binary.Uvarint(senderBalanceBytes)
-				if senderBalance < v.Tx.Amount {
-					panic("Insufficient balances " + fmt.Sprintf("Block Num: %d, Sender Balance: %d, Amount: %d, Sender Address: %s", v.Index, senderBalance, v.Tx.Amount, v.Tx.Sender))
+				err := removeFromBalance(tx, v.Tx.Sender, v.Tx.Amount)
+				if err != nil {
+					return err
 				}
-				senderBalance -= v.Tx.Amount
-
-				receiverBalanceBytes := tx.Bucket(addrToBalances).Get(serializeAddress(v.Tx.Receiver))
-				receiverBalance, _ := binary.Uvarint(receiverBalanceBytes)
-				receiverBalance += v.Tx.Amount
-
-				buf := make([]byte, binary.MaxVarintLen64)
-				n := binary.PutUvarint(buf, senderBalance)
-				if err := tx.Bucket(addrToBalances).Put(serializeAddress(v.Tx.Sender), buf[:n]); err != nil {
-					panic(err)
-				}
-				buf = make([]byte, binary.MaxVarintLen64)
-				n = binary.PutUvarint(buf, receiverBalance)
-				if err := tx.Bucket(addrToBalances).Put(serializeAddress(v.Tx.Receiver), buf[:n]); err != nil {
-					panic(err)
-				}
+				addToBalance(tx, v.Tx.Receiver, v.Tx.Amount)
 			} else {
-				solverBalanceBytes := tx.Bucket(addrToBalances).Get(serializeAddress(v.Solver))
-				solverBalance, _ := binary.Uvarint(solverBalanceBytes)
-				solverBalance += Reward
-				buf := make([]byte, binary.MaxVarintLen64)
-				n := binary.PutUvarint(buf, solverBalance)
-				if err := tx.Bucket(addrToBalances).Put(serializeAddress(v.Solver), buf[:n]); err != nil {
-					panic(err)
-				}
+				addToBalance(tx, v.Solver, Reward)
 			}
 		}
 		return nil
 	}); err != nil {
 		panic(err)
 	}
+}
+
+func setAddressBalance(tx *bolt.Tx, address string, balance uint64) {
+	buf := make([]byte, binary.MaxVarintLen64)
+	n := binary.PutUvarint(buf, balance)
+	if err := tx.Bucket(addrToBalances).Put(serializeAddress(address), buf[:n]); err != nil {
+		panic(err)
+	}
+}
+
+func getAddressBalance(tx *bolt.Tx, address string) uint64 {
+	balanceBytes := tx.Bucket(addrToBalances).Get(serializeAddress(address))
+	balance, _ := binary.Uvarint(balanceBytes)
+	return balance
+}
+
+func addToBalance(tx *bolt.Tx, address string, delta uint64) {
+	if delta == 0 {
+		return
+	}
+	setAddressBalance(tx, address, getAddressBalance(tx, address)+delta)
+}
+
+func removeFromBalance(tx *bolt.Tx, address string, delta uint64) error {
+	if delta == 0 {
+		return nil
+	}
+	currBalance := getAddressBalance(tx, address)
+	if currBalance < delta {
+		return errors.New(fmt.Sprint("insufficient balance ", currBalance, " to remove ", delta))
+	}
+	setAddressBalance(tx, address, currBalance-delta)
+	return nil
 }
 
 func GetBlockByIndex(i uint64) (*Block, error) {
@@ -264,12 +287,12 @@ func serialize(b *Block) []byte {
 
 func serializeAddress(addr string) []byte {
 	// serialized format: version char + decoded base64
-	// addr format: [Q + version char + base64(shasum(pubkey)[:20]) + ]
-	return append([]byte{addr[2]}, deb64(addr[3:len(addr)-1])...)
+	// addr format: Q + version char + base64(shasum(pubkey)[:20])
+	return append([]byte{addr[1]}, deb64(addr[2:])...)
 }
 
 func deserializeAddress(addrBytes []byte) string {
-	return "[Q" + string(addrBytes[0]) + b64(addrBytes[1:]) + "]"
+	return "Q" + string(addrBytes[0]) + b64(addrBytes[1:])
 }
 
 func serializeHash(hash string) []byte {

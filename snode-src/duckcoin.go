@@ -201,7 +201,7 @@ Restart:
 		newBlock.Tx.PubKey = ""
 		newBlock.Tx.Signature = ""
 	}
-	//var i uint64
+	//fmt.Println("Block template\n" + gchalk.BrightYellow(util.ToJSON(newBlock)))
 Mine:
 	for i := uint64(0); ; i++ { // stuff in this loop needs to be super optimized
 		select {
@@ -228,7 +228,7 @@ Mine:
 					//arrow = gchalk.BrightYellow("·")
 					arrow = " "
 				}
-				fmt.Printf("%s Rate: %s kHashes/s, Checked hashes: %s\n", arrow, gchalk.BrightYellow(fmt.Sprintf("%0.3g", curr)), gchalk.BrightGreen(fmt.Sprint(i)))
+				fmt.Printf("%s Rate: %s kHashes/s, Checked hashes: %s\n", arrow, gchalk.BrightYellow(fmt.Sprintf("%d", int(math.Round(curr)))), gchalk.BrightGreen(fmt.Sprint(i)))
 			}
 			if !util.IsHashValidBytes(util.CalculateHashBytes(newBlock), target) {
 				continue
@@ -333,12 +333,16 @@ func parseArgs() {
 			fmt.Println(err)
 			os.Exit(1)
 		}
+		if ducks < 0 {
+			fmt.Println("Can't send negative money, mate")
+			os.Exit(1)
+		}
 		ArgAmount = uint64(ducks * float64(util.MicroquacksPerDuck))
 	}
 	if len(os.Args) > 1 && !strings.HasPrefix(os.Args[1], "-") {
 		i, err := strconv.ParseInt(os.Args[1], 10, 64)
 		if err == nil {
-			ArgNumOfBlocks = uint64(i)
+			ArgNumOfBlocks = uint64(i) // can cause overflow with negative amounts
 		} else {
 			fmt.Println(err)
 			os.Exit(1)
