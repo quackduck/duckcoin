@@ -80,14 +80,14 @@ func CalculateHash(block *Block) string {
 
 // CalculateHashBytes calculates the hash of a Block.
 func CalculateHashBytes(b *Block) []byte {
-	//return ShasumBytes(
+	//return DoubleShasumBytes(
 	//	append(new(big.Int).SetUint64(b.Index).Bytes(),
 	//		append(new(big.Int).SetUint64(b.Timestamp).Bytes(),
 	//			append([]byte(b.Data+b.PrevHash),
 	//				append(new(big.Int).SetUint64(b.Solution).Bytes(),
 	//					append([]byte(b.Solver+b.Tx.Data+b.Tx.Sender+b.Tx.Receiver),
 	//						new(big.Int).SetUint64(b.Tx.Amount).Bytes()...)...)...)...)...))
-	return ShasumBytes(
+	return DoubleShasumBytes(
 		[]byte(strconv.FormatUint(b.Index, 10) + strconv.FormatUint(b.Timestamp, 10) + b.Data + b.PrevHash + strconv.FormatUint(b.Solution, 10) + b.Solver + // b.Hash is left out cause that's what's set later as the result of this func
 			b.Tx.Data + b.Tx.Sender + b.Tx.Receiver + strconv.FormatUint(b.Tx.Amount, 10), // notice b.Tx.Signature is left out, that's also set later depending on this function's result
 		),
@@ -96,7 +96,7 @@ func CalculateHashBytes(b *Block) []byte {
 
 // MakeSignature signs a message with a private key.
 func MakeSignature(privkey string, message string) (string, error) {
-	hash := sha256.Sum256([]byte(message))
+	hash := DoubleShasumBytes([]byte(message))
 	key, err := duckToPrivateKey(privkey)
 	if err != nil {
 		return "", err
@@ -108,16 +108,19 @@ func MakeSignature(privkey string, message string) (string, error) {
 	return base64.StdEncoding.EncodeToString(data), nil
 }
 
-// Shasum returns the sha256 hash of a byte slice
-func Shasum(record []byte) string {
-	return hex.EncodeToString(ShasumBytes(record))
-}
+//// Shasum returns the sha256 hash of a byte slice
+//func Shasum(record []byte) string {
+//	return hex.EncodeToString(DoubleShasumBytes(record))
+//}
 
-// ShasumBytes returns the sha256 hash of a byte slice
-func ShasumBytes(record []byte) []byte {
+// DoubleShasumBytes returns sha256(sha256(record))
+func DoubleShasumBytes(record []byte) []byte {
 	h := sha256.New()
 	h.Write(record)
 	hashed := h.Sum(nil)
+	h.Reset()
+	h.Write(hashed)
+	hashed = h.Sum(nil)
 	return hashed
 }
 
@@ -159,11 +162,17 @@ func ArgsHaveOption(long string, short string) (hasOption bool, foundAt int) {
 	return false, 0
 }
 
-// DuckToAddress converts a Duckcoin public key to a Duckcoin address.
+var versionChar = '0'
+
+// DuckToAddress converts a Duckcoin public key to a Duckcoin address, which is 34 characters long
 func DuckToAddress(key string) string {
-	hash := sha256.Sum256([]byte(key))
+	//hash := DoubleShasumBytes([]byte(key))
 	//return new(big.Int).SetBytes(addChecksum(hash[:20])).Text(60)
-	return "[Q." + base64.StdEncoding.EncodeToString(addChecksum(hash[:20])) + "]" // 20 + 4 bytes
+	return "Q" + string(versionChar) + base64.StdEncoding.EncodeToString(
+		addChecksum(
+			DoubleShasumBytes([]byte(key))[:20],
+		),
+	) // len(base64(20 + 4 bytes)) + len("q" + versionChar) = 24 * 4/3 + 2 = 34 len addrs
 }
 
 var checksumLen = 4
@@ -172,7 +181,7 @@ func addChecksum(data []byte) []byte {
 	dataCopy := make([]byte, len(data), cap(data))
 	copy(dataCopy, data) // don't modify original data
 
-	hash := sha256.Sum256(data)
+	hash := DoubleShasumBytes(data)
 	return append(dataCopy, hash[:checksumLen]...)
 }
 
@@ -186,13 +195,13 @@ func verifyChecksumData(data []byte) bool {
 
 // IsAddressValid verifies the checksum built into addresses, and checks the address format
 func IsAddressValid(addr string) bool {
-	if !strings.HasPrefix(addr, "[Q") {
+	if !strings.HasPrefix(addr, "Q") {
 		return false
 	}
-	if !strings.HasSuffix(addr, "]") {
-		return false
-	}
-	b, err := base64.StdEncoding.DecodeString(strings.TrimSuffix(strings.TrimPrefix(addr, "[Q"), "]")[1:]) // remove prefixes plus one byte (may be used later to store version info)
+	//if !strings.HasSuffix(addr, "]") {
+	//	return false
+	//}
+	b, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(addr, "Q")[1:]) // remove prefixes plus one byte (version char may be used later to store version info)
 	if err != nil {
 		return false
 	}
@@ -205,12 +214,12 @@ func CheckSignature(signature string, pubkey string, message string) (bool, erro
 	if err != nil {
 		return false, err
 	}
-	hash := sha256.Sum256([]byte(message))
+	hash := DoubleShasumBytes([]byte(message))
 	key, err := duckToPublicKey(pubkey)
 	if err != nil {
 		return false, err
 	}
-	return ecdsa.VerifyASN1(key, hash[:], decodedSig), nil
+	return ecdsa.VerifyASN1(key, hash, decodedSig), nil
 }
 
 // MakeKeyPair creates a new public and private key pair

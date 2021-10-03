@@ -137,11 +137,6 @@ func handleGetBalances(w http.ResponseWriter, _ *http.Request) {
 }
 
 func handleGetNewest(w http.ResponseWriter, _ *http.Request) {
-	//newestBlock, err := util.GetNewestBlock()
-	//if err != nil {
-	//	http.Error(w, err.Error(), http.StatusInternalServerError)
-	//	return
-	//}
 	bytes, err := json.MarshalIndent(NewestBlock, "", "  ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
