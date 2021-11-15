@@ -32,9 +32,9 @@ var (
 
 	Pubkey  string
 	Privkey string
-	Address string
+	Addr    util.Address
 
-	ArgReceiver    string // command line arguments
+	ArgReceiver    util.Address // command line arguments
 	ArgMessage     string
 	ArgAmount      uint64
 	ArgNumOfBlocks uint64 = math.MaxUint64
@@ -60,14 +60,13 @@ Examples:
 For more info go to https://github.com/quackduck/duckcoin`
 )
 
-// TODO: consider sending blocks in a really efficient binary way (like BTC and probably literally every other crypto)
+// TODO: consider sending blocks in a really efficient binary way (like BTC and probably literally every other crypto, we already have a format for the DB)
 
 func main() {
 	var err error
 
 	parseArgs()
-	Pubkey, Privkey, err = util.LoadKeyPair(PubkeyFile, PrivkeyFile)
-	gchalk.BrightYellow("Loaded keys from " + PubkeyFile + " and " + PrivkeyFile)
+	Pubkey, Privkey, Addr, err = util.LoadKeysAndAddr(PubkeyFile, PrivkeyFile)
 	if err != nil {
 		fmt.Println("Making you a fresh, new key pair and address!")
 		Pubkey, Privkey, err = util.MakeKeyPair()
@@ -83,9 +82,8 @@ func main() {
 		gchalk.BrightYellow("Your keys have been saved to " + PubkeyFile + "(pubkey) and " + PrivkeyFile + " (privkey)")
 		gchalk.BrightRed("Do not tell anyone what's inside " + PrivkeyFile)
 	}
-
-	Address = util.DuckToAddress(Pubkey)
-	fmt.Println("Mining to this address:", gchalk.BrightBlue(Address))
+	gchalk.BrightYellow("Loaded keys from " + PubkeyFile + " and " + PrivkeyFile)
+	fmt.Println("Mining to this address:", gchalk.BrightBlue(Addr.Emoji))
 
 	err = loadDifficultyAndURL()
 	if err != nil {
@@ -105,14 +103,15 @@ func main() {
 	mine(ArgNumOfBlocks, ArgAmount, ArgReceiver, blockMsg, ArgMessage)
 }
 
-// mine mines numOfBlocks blocks, with the Transaction's arbitrary data field set to data if amount is not 0.
-// It also takes in the receiver's Address and amount to send in each block, if amount is not 0
-func mine(numOfBlocks, amount uint64, receiver, blockData, txData string) {
+// mine mines numOfBlocks blocks, with the block's data field set to blockData and the
+// transaction's arbitrary data field set to txData (in this case if amount is not 0)
+// It also takes in the receiver's address and amount to send in each block, used if amount is not 0
+func mine(numOfBlocks, amount uint64, receiver util.Address, blockData, txData string) {
 	var i uint64
-	var b util.Block
+	var b util.Sblock
 	for ; i < numOfBlocks; i++ {
 		doneChan := make(chan interface{}, 1)
-		blockChan := make(chan util.Block, 1)
+		blockChan := make(chan util.Sblock, 1)
 		r, err := http.Get(URL + "/blocks/newest")
 		if err != nil {
 			fmt.Println(err)
@@ -124,10 +123,10 @@ func mine(numOfBlocks, amount uint64, receiver, blockData, txData string) {
 			blockChan <- b
 
 			makeBlock(
-				blockChan, Privkey, blockData, Address,
+				blockChan, Privkey, blockData, Addr,
 				util.Transaction{
 					Data:      txData,
-					Sender:    Address,
+					Sender:    Addr,
 					Receiver:  receiver,
 					Amount:    amount,
 					PubKey:    Pubkey,
@@ -153,7 +152,7 @@ func mine(numOfBlocks, amount uint64, receiver, blockData, txData string) {
 				_ = json.NewDecoder(r.Body).Decode(&currBlock)
 				_ = r.Body.Close()
 				if currBlock != b {
-					if currBlock.Solver != Address {
+					if currBlock.Solver != Addr {
 						fmt.Println(gchalk.RGB(255, 165, 0)("Gotta restart, someone else got block " + strconv.Itoa(int(currBlock.Index))))
 						b = currBlock
 						blockChan <- currBlock
@@ -168,14 +167,14 @@ func mine(numOfBlocks, amount uint64, receiver, blockData, txData string) {
 // makeBlock creates one new block by accepting a block sent on blockChan as the latest block,
 // and restarting mining in case a new block is sent on blockChan.
 // It takes in the user's private key to be used in signing tx, the transaction, if tx.Amount is not 0.
-// It also takes in the arbitrary data to be included in the block and the user's Address (solver).
+// It also takes in the arbitrary data to be included in the block and the user's Addr (solver).
 //
 // makeBlock also fills in the transaction's Signature field and the block's Hash field
-func makeBlock(blockChan chan util.Block, privkey string, data string, solver string, tx util.Transaction) {
+func makeBlock(blockChan chan util.Sblock, privkey string, data string, solver util.Address, tx util.Transaction) {
 	var lastHashrate float64
 	lastTime := time.Now()
 
-	newBlock := new(util.Block)
+	newBlock := new(util.Sblock)
 
 	err := loadDifficultyAndURL()
 	if err != nil {
@@ -187,7 +186,7 @@ func makeBlock(blockChan chan util.Block, privkey string, data string, solver st
 	oldBlock := <-blockChan
 Restart:
 	t := time.Now()
-	newBlock.Timestamp = uint64(t.UnixMilli())
+	newBlock.Timestamp = uint64(t.UnixNano() / 1000 / 1000)
 	newBlock.Index = oldBlock.Index + 1
 	newBlock.Data = data
 	newBlock.PrevHash = oldBlock.Hash
@@ -196,12 +195,12 @@ Restart:
 
 	if newBlock.Tx.Amount == 0 {
 		newBlock.Tx.Data = ""
-		newBlock.Tx.Sender = ""
-		newBlock.Tx.Receiver = ""
+		newBlock.Tx.Sender = util.Address{}
+		newBlock.Tx.Receiver = util.Address{}
 		newBlock.Tx.PubKey = ""
 		newBlock.Tx.Signature = ""
 	}
-	//fmt.Println("Block template\n" + gchalk.BrightYellow(util.ToJSON(newBlock)))
+	//fmt.Println("Sblock template\n" + gchalk.BrightYellow(util.ToJSON(newBlock)))
 Mine:
 	for i := uint64(0); ; i++ { // stuff in this loop needs to be super optimized
 		select {
@@ -307,9 +306,13 @@ func parseArgs() {
 			fmt.Println("Too few arguments to --to")
 			os.Exit(1)
 		}
-		ArgReceiver = os.Args[i+1]
-		if !util.IsAddressValid(ArgReceiver) {
-			fmt.Println("error: invalid receiver address, check if you mistyped it")
+		var err error
+		ArgReceiver, err = util.EmojiOrTextToAddress(os.Args[i+1])
+		if err != nil {
+			fmt.Println("error: could not parse address: " + err.Error())
+		}
+		if err = util.IsAddressValid(ArgReceiver); err != nil {
+			fmt.Println("error: invalid receiver address, check if you mistyped it: " + err.Error())
 			os.Exit(1)
 		}
 	}

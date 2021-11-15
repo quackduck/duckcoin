@@ -5,18 +5,22 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/jwalton/gchalk"
 	"github.com/quackduck/duckcoin/util"
 )
 
 var (
-	NewestBlock *util.Block
+	NewestBlock *util.Sblock
 
-	ReCalcInterval   = 100
+	ReCalcInterval   = 100 // Recalculate difficulty every 100 blocks
 	Past100Durations = make([]time.Duration, 0, ReCalcInterval)
 	NewestBlockTime  = time.Now()
 	TargetDuration   = time.Second * 30
@@ -24,13 +28,48 @@ var (
 	// Difficulty is the number of hashes needed for a block to be valid on average.
 	// See util.GetTarget for more information.
 	Difficulty uint64
+
+	Pubkey  string
+	Privkey string
+	Addr    util.Address
+
+	PubkeyFile  = getConfigDir() + "/pubkey.pem"
+	PrivkeyFile = getConfigDir() + "/privkey.pem"
+	LnodesFile  = getConfigDir() + "/lnodes.txt"
+	Lnodes      []string
 )
 
 func main() {
+	var err error
+	Pubkey, Privkey, Addr, err = util.LoadKeysAndAddr(PubkeyFile, PrivkeyFile)
+	if err != nil {
+		fmt.Println("Making you a fresh, new key pair and address!")
+		Pubkey, Privkey, err = util.MakeKeyPair()
+		if err != nil {
+			fmt.Println("error", err)
+			return
+		}
+		err = util.SaveKeyPair(Pubkey, Privkey, PubkeyFile, PrivkeyFile)
+		if err != nil {
+			fmt.Println("error", err)
+			return
+		}
+		gchalk.BrightYellow("Your keys have been saved to " + PubkeyFile + "(pubkey) and " + PrivkeyFile + " (privkey)")
+		gchalk.BrightRed("Do not tell anyone what's inside " + PrivkeyFile)
+	}
+
+	gchalk.BrightYellow("Loaded keys from " + PubkeyFile + " and " + PrivkeyFile)
+	fmt.Println("Mining to this address:", gchalk.BrightBlue(Addr.Emoji))
+	Lnodes, err = parseLnodesFile(LnodesFile)
+	if err != nil {
+		fmt.Println("error", err)
+		return
+	}
+
 	util.DBInit()
 
 	Past100Durations = append(Past100Durations, TargetDuration)
-	Difficulty = 1048576 * 1
+	Difficulty = 1048576 * 1 // EDITT!!!! TODO
 
 	if err := setup(); err != nil {
 		fmt.Println("error: ", err)
@@ -88,7 +127,7 @@ func setup() error {
 	return nil
 }
 
-func addBlockToChain(b *util.Block) {
+func addBlockToChain(b *util.Sblock) {
 	fmt.Println("Adding a block with hash:", b.Hash+". This one came in", time.Since(NewestBlockTime), "after the previous block.")
 
 	if len(Past100Durations) < ReCalcInterval {
@@ -150,8 +189,10 @@ func handleGetNewest(w http.ResponseWriter, _ *http.Request) {
 }
 
 func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
 	w.Header().Set("Content-Type", "application/json")
-	b := new(util.Block)
+	b := new(util.Sblock)
 
 	decoder := json.NewDecoder(io.LimitReader(r.Body, 1e6))
 	if err := decoder.Decode(b); err != nil {
@@ -159,8 +200,6 @@ func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 		respondWithJSON(w, http.StatusBadRequest, "Bad JSON request. This may be caused by a block that is too big (more than 1mb) but these are usually with malicious intent. "+err.Error())
 		return
 	}
-	//fmt.Println(b)
-	defer r.Body.Close()
 
 	if err := isValid(b, NewestBlock); err == nil {
 		addBlockToChain(b)
@@ -169,7 +208,7 @@ func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Rejected a block")
 		return
 	}
-	respondWithJSON(w, http.StatusCreated, "Block accepted.")
+	respondWithJSON(w, http.StatusCreated, "Sblock accepted.")
 }
 
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
@@ -192,7 +231,7 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	}
 }
 
-func isValid(newBlock, oldBlock *util.Block) error {
+func isValid(newBlock, oldBlock *util.Sblock) error {
 	const blockDataLimit = 1e3 * 250
 	const txDataLimit = 1e3 * 250
 
@@ -206,30 +245,29 @@ func isValid(newBlock, oldBlock *util.Block) error {
 		return errors.New("PrevHash should be " + oldBlock.Hash)
 	}
 	if uint64(time.Now().UnixMilli())-newBlock.Timestamp > 1e3*60*5 { // 5 minutes in millis
-		return errors.New("Block timestamp is not within 5 minutes before current time. What are you trying to pull off here?")
+		return errors.New("Sblock timestamp is not within 5 minutes before current time. What are you trying to pull off here?")
 	}
-	if !util.IsAddressValid(newBlock.Solver) {
-		return errors.New("Sender is invalid")
+	if err := util.IsAddressValid(newBlock.Solver); err != nil {
+		return errors.New("Sender is invalid: " + err.Error())
 	}
-
 	if util.CalculateHash(newBlock) != newBlock.Hash {
-		return errors.New("Block Hash does not match actual hash.")
+		return errors.New("Sblock Hash does not match actual hash.")
 	}
 	if !util.IsHashValid(newBlock.Hash, util.GetTarget(Difficulty)) {
-		return errors.New("Block is not a solution (does not have Difficulty zeros in hash)")
+		return errors.New("Sblock is not a solution (does not have Difficulty zeros in hash)")
 	}
 	if len(newBlock.Data) > blockDataLimit {
-		return errors.New("Block's Data field is too large. Should be >= 250 kb")
+		return errors.New("Sblock's Data field is too large. Should be >= 250 kb")
 	}
 	if len(newBlock.Tx.Data) > txDataLimit {
 		return errors.New("Transaction's Data field is too large. Should be >= 250 kb")
 	}
 	if newBlock.Tx.Amount > 0 {
-		if !util.IsAddressValid(newBlock.Tx.Sender) || !util.IsAddressValid(newBlock.Tx.Receiver) || !util.IsValidBase64(newBlock.Tx.PubKey) ||
+		if util.IsAddressValid(newBlock.Tx.Sender) != nil || util.IsAddressValid(newBlock.Tx.Receiver) != nil || !util.IsValidBase64(newBlock.Tx.PubKey) ||
 			!util.IsValidBase64(newBlock.Tx.Signature) {
 			return errors.New("At least one of the Sender, Receiver, PubKey or Signature is not valid. What are you trying to pull here?")
 		}
-		if util.DuckToAddress(newBlock.Tx.PubKey) != newBlock.Tx.Sender {
+		if util.KeyToAddress(newBlock.Tx.PubKey) != newBlock.Tx.Sender {
 			return errors.New("Pubkey does not match sender address")
 		}
 		if ok, err := util.CheckSignature(newBlock.Tx.Signature, newBlock.Tx.PubKey, newBlock.Hash); !ok {
@@ -265,4 +303,30 @@ func reCalcDifficulty() {
 	// if avgDur is lower, then the Difficulty will be made higher
 	Difficulty = (Difficulty * uint64(TargetDuration)) / avg
 	fmt.Println("\nRecalculated difficulty. It is now", Difficulty)
+}
+
+func getConfigDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Println("error:", err)
+		os.Exit(0)
+	}
+	err = os.MkdirAll(home+"/.config/duckcoin", 0700)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(0)
+	}
+	return home + "/.config/duckcoin"
+}
+
+func parseLnodesFile(f string) ([]string, error) {
+	data, err := ioutil.ReadFile(f)
+	if err != nil {
+		return nil, err
+	}
+	s := strings.Split(string(data), "\n")
+	for i := range s {
+		s[i] = strings.TrimSpace(s[i])
+	}
+	return s, nil
 }

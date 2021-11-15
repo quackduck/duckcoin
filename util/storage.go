@@ -19,27 +19,27 @@ var (
 	Reward uint64 = 1e6
 
 	newestIsGenesis = false // TODO: store genesis as a normal block
-	genesis         = &Block{
+	genesis         = &Sblock{
 		Index:     0,
 		Timestamp: 1633231790000,
 		Data: "This is the genesis block. Made by Ishan Goel: @quackduck on GitHub. " +
-			"Thank you to Jason Antwi-Appah for the name \"Duckcoin\", and to Arcade Wise." +
+			"Thank you to Jason Antwi-Appah for the name \"Duckcoin\", to Arcade Wise, and to Cedric Hutchings." +
 			"Thank you to friends at Hack Club, and to the Internet. QUACK!",
 		Hash:     "0000000000000000000000000000000000000000000000000000000000000000",
 		PrevHash: "0000000000000000000000000000000000000000000000000000000000000000",
-		Solution: 42,                                     // the answer to life, the universe, and everything
-		Solver:   "[Q.nSvl+K7RauJ5IagU+ID/slhDoR+hGkmF]", // replace with ishan's actual address
+		Solution: 42,                                       // the answer to life, the universe, and everything
+		Solver:   BytesToAddress(*new([addrBytesLen]byte)), // replace with ishan's actual address
 		Tx: Transaction{
 			Data:      "Genesis transaction",
-			Sender:    "Q0v8U56+SYVLvWDmzNnmnYfcK1Xh0KxeAx",
-			Receiver:  "Q0v8U56+SYVLvWDmzNnmnYfcK1Xh0KxeAx",
+			Sender:    BytesToAddress(*new([addrBytesLen]byte)),
+			Receiver:  BytesToAddress(*new([addrBytesLen]byte)),
 			Amount:    100000 * 1e6,
 			PubKey:    "",
 			Signature: "",
 		},
 	}
-	genesisBalances = map[string]uint64{
-		"Q0v8U56+SYVLvWDmzNnmnYfcK1Xh0KxeAx": 100 * MicroquacksPerDuck,
+	genesisBalances = map[Address]uint64{
+		BytesToAddress(*new([addrBytesLen]byte)): 100 * MicroquacksPerDuck,
 	}
 )
 
@@ -70,7 +70,7 @@ func DBInit() {
 		for k, v := range genesisBalances {
 			buf := make([]byte, binary.MaxVarintLen64)
 			n := binary.PutUvarint(buf, v)
-			err = tx.Bucket(addrToBalances).Put(serializeAddress(k), buf[:n])
+			err = tx.Bucket(addrToBalances).Put(k.bytes[:], buf[:n])
 			if err != nil {
 				return err
 			}
@@ -81,7 +81,7 @@ func DBInit() {
 	}
 }
 
-func WriteBlockDB(blks ...*Block) {
+func WriteBlockDB(blks ...*Sblock) {
 	if err := db.Update(func(tx *bolt.Tx) error {
 		for _, v := range blks {
 			// store the newest block in idx -1
@@ -117,28 +117,28 @@ func WriteBlockDB(blks ...*Block) {
 	}
 }
 
-func setAddressBalance(tx *bolt.Tx, address string, balance uint64) {
+func setAddressBalance(tx *bolt.Tx, address Address, balance uint64) {
 	buf := make([]byte, binary.MaxVarintLen64)
 	n := binary.PutUvarint(buf, balance)
-	if err := tx.Bucket(addrToBalances).Put(serializeAddress(address), buf[:n]); err != nil {
+	if err := tx.Bucket(addrToBalances).Put(address.bytes[:], buf[:n]); err != nil {
 		panic(err)
 	}
 }
 
-func getAddressBalance(tx *bolt.Tx, address string) uint64 {
-	balanceBytes := tx.Bucket(addrToBalances).Get(serializeAddress(address))
+func getAddressBalance(tx *bolt.Tx, address Address) uint64 {
+	balanceBytes := tx.Bucket(addrToBalances).Get(address.bytes[:])
 	balance, _ := binary.Uvarint(balanceBytes)
 	return balance
 }
 
-func addToBalance(tx *bolt.Tx, address string, delta uint64) {
+func addToBalance(tx *bolt.Tx, address Address, delta uint64) {
 	if delta == 0 {
 		return
 	}
 	setAddressBalance(tx, address, getAddressBalance(tx, address)+delta)
 }
 
-func removeFromBalance(tx *bolt.Tx, address string, delta uint64) error {
+func removeFromBalance(tx *bolt.Tx, address Address, delta uint64) error {
 	if delta == 0 {
 		return nil
 	}
@@ -150,11 +150,11 @@ func removeFromBalance(tx *bolt.Tx, address string, delta uint64) error {
 	return nil
 }
 
-func GetBlockByIndex(i uint64) (*Block, error) {
+func GetBlockByIndex(i uint64) (*Sblock, error) {
 	if i == 0 {
 		return genesis, nil
 	}
-	ret := new(Block)
+	ret := new(Sblock)
 	if err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(numToBlock)
 		data := b.Get([]byte(strconv.FormatUint(i, 10)))
@@ -169,8 +169,8 @@ func GetBlockByIndex(i uint64) (*Block, error) {
 	return ret, nil
 }
 
-func GetBlockByHash(hash string) (*Block, error) {
-	ret := new(Block)
+func GetBlockByHash(hash string) (*Sblock, error) {
+	ret := new(Sblock)
 	if err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(hashToNum)
 		data := b.Get(serializeHash(hash))
@@ -186,11 +186,11 @@ func GetBlockByHash(hash string) (*Block, error) {
 	return ret, nil
 }
 
-func GetNewestBlock() (*Block, error) {
+func GetNewestBlock() (*Sblock, error) {
 	if newestIsGenesis {
 		return genesis, nil
 	}
-	ret := new(Block)
+	ret := new(Sblock)
 	if err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(numToBlock)
 		data := b.Get([]byte("newest"))
@@ -205,11 +205,11 @@ func GetNewestBlock() (*Block, error) {
 	return ret, nil
 }
 
-func GetBalanceByAddr(addr string) (uint64, error) {
+func GetBalanceByAddr(addr Address) (uint64, error) {
 	var ret uint64
 	if err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(addrToBalances)
-		data := b.Get(serializeAddress(addr))
+		data := b.Get(addr.bytes[:])
 		ret, _ = binary.Uvarint(data)
 		return nil
 	}); err != nil {
@@ -218,28 +218,30 @@ func GetBalanceByAddr(addr string) (uint64, error) {
 	return ret, nil
 }
 
-func GetAllBalances() (map[string]uint64, error) {
-	ret := make(map[string]uint64, 1000)
+// GetAllBalances returns a map of addresses to the balance in microquacks
+func GetAllBalances() (map[Address]uint64, error) {
+	ret := make(map[Address]uint64, 1000)
 	return ret, db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(addrToBalances)
 		return b.ForEach(func(addr, balanceData []byte) error {
 			balance, _ := binary.Uvarint(balanceData)
-			ret[deserializeAddress(addr)] = balance
+			ret[BytesToAddress(sliceToAddrBytes(addr))] = balance
 			return nil
 		})
 	})
 }
 
-func GetAllBalancesFloats() map[string]float64 {
+// GetAllBalancesFloats returns a map of addresses to the balance in ducks
+func GetAllBalancesFloats() map[Address]float64 {
 	l, _ := GetAllBalances()
-	balances := make(map[string]float64, len(l))
+	balances := make(map[Address]float64, len(l))
 	for address, balance := range l {
 		balances[address] = float64(balance) / float64(MicroquacksPerDuck)
 	}
 	return balances
 }
 
-func serialize(b *Block) []byte {
+func serialize(b *Sblock) []byte {
 	ret := make([]byte, 0, 1024)
 
 	buf := make([]byte, binary.MaxVarintLen64)
@@ -270,10 +272,10 @@ func serialize(b *Block) []byte {
 	n = binary.PutUvarint(buf, b.Solution)
 	ret = append(ret, buf[:n]...)
 
-	ret = encodeVarintBytes(ret, serializeAddress(b.Solver))
+	ret = encodeVarintBytes(ret, b.Solver.bytes[:])
 	if b.Tx.Amount != 0 {
 		ret = append(ret, 1) // marker that Tx exists and should be deserialized
-		ret = encodeVarintBytes(ret, []byte(b.Tx.Data), serializeAddress(b.Tx.Sender), serializeAddress(b.Tx.Receiver))
+		ret = encodeVarintBytes(ret, []byte(b.Tx.Data), b.Tx.Sender.bytes[:], b.Tx.Receiver.bytes[:])
 
 		buf = make([]byte, binary.MaxVarintLen64)
 		n = binary.PutUvarint(buf, b.Tx.Amount)
@@ -285,15 +287,15 @@ func serialize(b *Block) []byte {
 	return ret
 }
 
-func serializeAddress(addr string) []byte {
-	// serialized format: version char + decoded base64
-	// addr format: Q + version char + base64(shasum(pubkey)[:20])
-	return append([]byte{addr[1]}, deb64(addr[2:])...)
-}
-
-func deserializeAddress(addrBytes []byte) string {
-	return "Q" + string(addrBytes[0]) + b64(addrBytes[1:])
-}
+//func serializeAddress(addr string) []byte {
+//	// serialized format: version char + decoded base64
+//	// addr format: Q + version char + base64(shasum(pubkey)[:20])
+//	return append([]byte{addr[1]}, deb64(addr[2:])...)
+//}
+//
+//func deserializeAddress(addrBytes []byte) string {
+//	return "Q" + string(addrBytes[0]) + b64(addrBytes[1:])
+//}
 
 func serializeHash(hash string) []byte {
 	hashInt, ok := new(big.Int).SetString(hash, 16)
@@ -314,12 +316,12 @@ func encodeVarintBytes(writeTo []byte, data ...[]byte) []byte {
 	return writeTo
 }
 
-func deserialize(buf []byte) *Block {
+func deserialize(buf []byte) *Sblock {
 	if len(buf) == 0 {
 		return nil
 	}
 	var data []byte
-	ret := new(Block)
+	ret := new(Sblock)
 
 	i, length := binary.Uvarint(buf)
 	ret.Index = i
@@ -344,7 +346,7 @@ func deserialize(buf []byte) *Block {
 	ret.Solution = i
 
 	buf, data = decodeVarintBytes(buf)
-	ret.Solver = deserializeAddress(data)
+	ret.Solver = BytesToAddress(sliceToAddrBytes(data))
 
 	if buf[0] == 1 { // marker that tx data exists
 		buf = buf[1:]
@@ -352,10 +354,10 @@ func deserialize(buf []byte) *Block {
 		ret.Tx.Data = string(data)
 
 		buf, data = decodeVarintBytes(buf)
-		ret.Tx.Sender = deserializeAddress(data)
+		ret.Tx.Sender = BytesToAddress(sliceToAddrBytes(data))
 
 		buf, data = decodeVarintBytes(buf)
-		ret.Tx.Receiver = deserializeAddress(data)
+		ret.Tx.Receiver = BytesToAddress(sliceToAddrBytes(data))
 
 		i, length = binary.Uvarint(buf)
 		ret.Tx.Amount = i
