@@ -9,7 +9,7 @@ Duckcoin is a cryptocurrency that will have zero fees, be decentralized and easy
 - [x] Easy to mine
 - [x] Zero fees
 
-Duckcoin is a fully working cryptocurrency that uses PoW protocol, which is also a protocol used by Bitcoin and Eth Classic, to give miners rewards. However, it is currently operating on a centralized server-client model, which will obviously get me canceled if I release this right now. 
+Duckcoin is a fully working cryptocurrency that uses PoW protocol, which is a blockchain protocol also used by Bitcoin and Eth Classic, to give miners rewards. However, it is currently operating on a centralized server-client model, which will obviously get me canceled if I release this right now. 
 
 Duckcoin works differently from other cryptocurrencies. They need miners to have their own public IPs, or to port forward certain ports so that miners can contact each other in a peer-to-peer way. Because of how widespread Carrier Grade NAT is, it is usually rarely possible to host a node at home, without a custom rig. 
 
