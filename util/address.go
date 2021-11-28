@@ -1,7 +1,6 @@
 package util
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,33 +15,23 @@ type Address struct {
 	bytes [addrBytesLen]byte
 }
 
-//func (a Address) Equals(s string) bool {
-//	return a.Emoji == s || a.Text == s
-//}
-
 // TODO: implement the custom json marshaller interfaces so that addr.bytes is automatically populated
 
 var (
-	//	len(set)^x = 256, where x is the multiplier. thus, x = log_[len](256) = log(256)/log(len)
-	emojiLen = 1 + int(math.Ceil( // +1 because we want a starting duck emoji
-		float64(addrBytesLen)*math.Log2(256)/math.Log2(float64(len(emoji))),
-	))
-
-	// TODO: encode to text with a custom charset too
-	textLen = 1 + int(math.Ceil( // +2 because of the prefix and the version char
-		float64(addrBytesLen)*4.0/3.0,
-	))
+	emojiCoder = encoding{set: emoji, dataLen: addrBytesLen}
+	textCoder  = encoding{set: []rune("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"), dataLen: addrBytesLen}
 )
 
 const (
-	addrBytesLen              = 24
-	checksumLen               = 4
-	duckcoinAddressPrefixChar = 'Q'
+	addrBytesLen           = 24
+	checksumLen            = 4
+	textAddressPrefixChar  = 'Q'
+	emojiAddressPrefixChar = '🦆'
 	//versionChar               = '0'
 )
 
 func (a *Address) UnmarshalJSON(bytes []byte) error {
-	type address Address // prevent infinite unmarshall loop
+	type address Address // prevent infinite unmarshal loop
 	addr := address{}
 	err := json.Unmarshal(bytes, &addr)
 	if err != nil {
@@ -79,20 +68,21 @@ func KeyToAddress(key string) Address {
 }
 
 func EmojiOrTextToAddress(addr string) (Address, error) {
-	if addr[0] == byte(duckcoinAddressPrefixChar) {
+	if addr[0] == byte(textAddressPrefixChar) {
 		return TextToAddress(addr)
 	} else {
 		return EmojiToAddress(addr)
 	}
 }
 
-func EmojiToBytes(emoji string) ([24]byte, error) {
+func EmojiToBytes(emoji string) ([addrBytesLen]byte, error) {
 	var result [addrBytesLen]byte
-	bytes, err := decodeEmojiAddress(emoji)
+	slice, err := emojiCoder.Decode(string([]rune(emoji)[1:]))
 	if err != nil {
 		return result, err
 	}
-	return bytes, nil
+	copy(result[:], slice)
+	return result, nil
 }
 
 func EmojiToAddress(emoji string) (Address, error) {
@@ -103,19 +93,17 @@ func EmojiToAddress(emoji string) (Address, error) {
 	return BytesToAddress(bytes), nil
 }
 
-func TextToBytes(text string) ([24]byte, error) {
+func TextToBytes(text string) ([addrBytesLen]byte, error) {
 	var result [addrBytesLen]byte
-	bytes, err := base64.StdEncoding.DecodeString(text[1:]) // remove first char: the prefix
+	slice, err := textCoder.Decode(string([]rune(text)[1:])) // remove first char: the prefix
 	if err != nil {
 		return result, err
 	}
-	return sliceToAddrBytes(bytes), nil
+	copy(result[:], slice)
+	return result, nil
 }
 
 func TextToAddress(text string) (Address, error) {
-	if len(text) != textLen {
-		return Address{}, errors.New("could not decode text address: invalid length: " + text)
-	}
 	bytes, err := TextToBytes(text)
 	if err != nil {
 		return Address{}, err
@@ -127,8 +115,8 @@ func BytesToAddress(b [addrBytesLen]byte) Address {
 	addr := Address{
 		bytes: b,
 	}
-	addr.Text = string(duckcoinAddressPrefixChar) + base64.StdEncoding.EncodeToString(addr.bytes[:]) // len(base64(20 + 4 bytes)) + len("q" + versionChar) = 24 * 4/3 + 2 = 34 len addrs
-	addr.Emoji = encodeEmojiAddress(addr.bytes)
+	addr.Text = string(textAddressPrefixChar) + textCoder.Encode(addr.bytes[:]) // len(base64(20 + 4 bytes)) + len("q" + versionChar) = 24 * 4/3 + 2 = 34 len addrs
+	addr.Emoji = string(emojiAddressPrefixChar) + emojiCoder.Encode(addr.bytes[:])
 	return addr
 }
 
@@ -176,39 +164,66 @@ func IsAddressValid(addr Address) error {
 	return nil
 }
 
-func encodeEmojiAddress(addr [addrBytesLen]byte) string {
-	convertedBase := toBase(new(big.Int).SetBytes(addr[:]), "")
-	// repeat emoji[0] is to normalize result length. 0 because that char has zero value in the set
-	return strings.Repeat(string(emoji[0]), emojiLen-len([]rune(convertedBase))) + convertedBase
+type encoding struct {
+	set []rune
+	// dataLen is the length of the byte data used. In duckcoin, this is always 24.
+	dataLen int
 }
 
-func toBase(num *big.Int, buf string) string {
-	base := int64(len(emoji))
+func (e *encoding) Encode(data []byte) string {
+	convertedBase := toBase(new(big.Int).SetBytes(data), "", e.set)
+	// repeat emoji[0] is to normalize result length. 0 because that char has zero value in the set
+	return strings.Repeat(string(e.set[0]), e.EncodedLen()-len([]rune(convertedBase))) + convertedBase
+}
+
+func (e *encoding) Decode(data string) ([]byte, error) {
+	if len([]rune(data)) != e.EncodedLen() {
+		return nil, errors.New("could not decode: invalid length of data: " + data)
+	}
+	num, err := fromBase(data, e.set)
+	if err != nil {
+		return nil, err
+	}
+	return num.FillBytes(make([]byte, e.dataLen)), nil
+}
+
+func (e *encoding) EncodedLen() int {
+	return int(math.Ceil(
+		float64(e.dataLen) * math.Log2(256) / math.Log2(float64(len(e.set))),
+	))
+}
+
+//func encodeEmojiAddress(addr [addrBytesLen]byte) string {
+//	return emojiCoder.Encode(addr[:])
+//	//convertedBase := toBase(new(big.Int).SetBytes(addr[:]), "", emoji)
+//	//// repeat emoji[0] is to normalize result length. 0 because that char has zero value in the set
+//	//return strings.Repeat(string(emoji[0]), emojiLen-len([]rune(convertedBase))) + convertedBase
+//}
+
+func toBase(num *big.Int, buf string, set []rune) string {
+	base := int64(len(set))
 	div, rem := new(big.Int), new(big.Int)
 	div.QuoRem(num, big.NewInt(base), rem)
 	if div.Cmp(big.NewInt(0)) != 0 {
-		buf += toBase(div, buf)
+		buf += toBase(div, buf, set)
 	}
-	return buf + string(emoji[rem.Uint64()])
+	return buf + string(set[rem.Uint64()])
 }
 
-func decodeEmojiAddress(emojiAddr string) ([addrBytesLen]byte, error) {
-	var result [addrBytesLen]byte
-	if len([]rune(emojiAddr)) != emojiLen {
-		return result, errors.New("could not decode emoji address: invalid length: " + emojiAddr)
-	}
-	num, err := fromBase(emojiAddr)
-	if err != nil {
-		return result, err
-	}
-	slice := num.FillBytes(make([]byte, addrBytesLen))
-	copy(result[:], slice)
-	return result, nil
-}
+//func decodeEmojiAddress(emojiAddr string) ([addrBytesLen]byte, error) {
+//	var result [addrBytesLen]byte
+//
+//	slice, err := emojiCoder.Decode(string([]rune(emojiAddr)[1:])) // remove prefix
+//	if err != nil {
+//		return result, err
+//	}
+//	copy(result[:], slice)
+//	return result, nil
+//}
 
-func fromBase(enc string) (*big.Int, error) {
+func fromBase(enc string, set []rune) (*big.Int, error) {
 	result := new(big.Int)
-	setlen := len(emoji)
+	setlen := len(set)
 	encRune := []rune(enc)
 	numOfDigits := len(encRune)
 	for i := 0; i < numOfDigits; i++ {
@@ -217,7 +232,7 @@ func fromBase(enc string) (*big.Int, error) {
 			big.NewInt(int64(numOfDigits-i-1)),
 			nil,
 		)
-		idx := findRuneIndex(encRune[i], emoji)
+		idx := findRuneIndex(encRune[i], set)
 		if idx == -1 {
 			return nil, errors.New("could not decode " + enc + ": rune " + string(encRune[i]) + " is not in charset")
 		}
