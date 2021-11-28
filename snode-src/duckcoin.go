@@ -301,9 +301,18 @@ func parseArgs() {
 		fmt.Println(HelpMsg)
 		os.Exit(0)
 	}
+	if ok, i := util.ArgsHaveOption("config", "c"); ok {
+		if len(os.Args) >= i+1 { // we want the next item to be available too
+			fmt.Println("Too few arguments to --config: need a directory")
+			os.Exit(0)
+		}
+		PubkeyFile = os.Args[i+1] + "/pubkey.pem"
+		PrivkeyFile = os.Args[i+1] + "/privkey.pem"
+		URLFile = os.Args[i+1] + "/url.txt"
+	}
 	if ok, i := util.ArgsHaveOption("to", "t"); ok {
 		if len(os.Args) < i+2 {
-			fmt.Println("Too few arguments to --to")
+			fmt.Println("Too few arguments to --to: need an address (emoji or text)")
 			os.Exit(1)
 		}
 		var err error
@@ -321,14 +330,14 @@ func parseArgs() {
 	}
 	if ok, i := util.ArgsHaveOption("message", "m"); ok {
 		if len(os.Args) < i+2 {
-			fmt.Println("Too few arguments to --message")
+			fmt.Println("Too few arguments to --message: need a message")
 			os.Exit(1)
 		}
 		ArgMessage = os.Args[i+1]
 	}
 	if ok, i := util.ArgsHaveOption("amount", "a"); ok {
 		if len(os.Args) < i+2 {
-			fmt.Println("Too few arguments to --amount")
+			fmt.Println("Too few arguments to --amount: need an amount to send")
 			os.Exit(1)
 		}
 		ducks, err := strconv.ParseFloat(os.Args[i+1], 64)
@@ -337,7 +346,7 @@ func parseArgs() {
 			os.Exit(1)
 		}
 		if ducks < 0 {
-			fmt.Println("Can't send negative money, mate")
+			fmt.Println("Can't send negative money, mate. Good try tho.")
 			os.Exit(1)
 		}
 		ArgAmount = uint64(ducks * float64(util.MicroquacksPerDuck))

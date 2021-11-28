@@ -134,11 +134,6 @@ func MakeSignature(privkey, message string) (string, error) {
 	return base64.StdEncoding.EncodeToString(data), nil
 }
 
-//// Shasum returns the sha256 hash of a byte slice
-//func Shasum(record []byte) string {
-//	return hex.EncodeToString(DoubleShasumBytes(record))
-//}
-
 // DoubleShasumBytes returns sha256(sha256(record))
 func DoubleShasumBytes(record []byte) []byte {
 	h := sha256.New()

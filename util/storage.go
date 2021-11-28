@@ -27,19 +27,19 @@ var (
 			"Thank you to friends at Hack Club, and to the Internet. QUACK!",
 		Hash:     "0000000000000000000000000000000000000000000000000000000000000000",
 		PrevHash: "0000000000000000000000000000000000000000000000000000000000000000",
-		Solution: 42,                                       // the answer to life, the universe, and everything
-		Solver:   BytesToAddress(*new([addrBytesLen]byte)), // replace with ishan's actual address
+		Solution: 42,        // the answer to life, the universe, and everything
+		Solver:   Address{}, // replace with ishan's actual address
 		Tx: Transaction{
 			Data:      "Genesis transaction",
-			Sender:    BytesToAddress(*new([addrBytesLen]byte)),
-			Receiver:  BytesToAddress(*new([addrBytesLen]byte)),
+			Sender:    Address{},
+			Receiver:  Address{},
 			Amount:    100000 * 1e6,
 			PubKey:    "",
 			Signature: "",
 		},
 	}
 	genesisBalances = map[Address]uint64{
-		BytesToAddress(*new([addrBytesLen]byte)): 100 * MicroquacksPerDuck,
+		Address{}: 1000 * MicroquacksPerDuck,
 	}
 )
 
