@@ -34,7 +34,7 @@ type Lblock struct {
 	Solution uint64
 	// Solver is the address of the sender. Address format: Q + version char + base64(shasum(pubkey)[:20])
 	Solver Address `json:",omitempty"`
-	// Sblocks must contain 10 Sblocks, validators should check for this condition.
+	// Sblocks contains the Sblocks that are part of this Lblock
 	Sblocks []Sblock
 }
 
@@ -94,11 +94,22 @@ func CalculateHash(block *Sblock) string {
 
 // CalculateHashBytes calculates the hash of a Sblock.
 func CalculateHashBytes(b *Sblock) []byte {
-	return DoubleShasumBytes(
-		[]byte(strconv.FormatUint(b.Index, 10) + strconv.FormatUint(b.Timestamp, 10) + b.Data + b.PrevHash + strconv.FormatUint(b.Solution, 10) + string(b.Solver.bytes[:]) + // b.Hash is left out cause that's what's set later as the result of this func
-			b.Tx.Data + string(b.Tx.Sender.bytes[:]) + string(b.Tx.Receiver.bytes[:]) + strconv.FormatUint(b.Tx.Amount, 10), // notice b.Tx.Signature is left out, that's also set later depending on this function's result
-		),
+	return DoubleShasumBytes(Preimage(b))
+}
+
+// PreimageWOSolution returns the data to be hashed to create the hash of an Sblock, but without the Solution field taken into account.
+// This is useful when mining.
+func PreimageWOSolution(b *Sblock) []byte {
+	// lenCtrl hashes the bytes that a represents
+	lenCtrl := func(a string) string { return string(DoubleShasumBytes([]byte(a))) }
+	// all data fields are length-controlled so that the preimage always has around the same size (amount + timestamp + solution sizes can change, but not much)
+	return []byte(strconv.FormatUint(b.Index, 10) + strconv.FormatUint(b.Timestamp, 10) + lenCtrl(b.Data) + b.PrevHash + string(b.Solver.bytes[:]) + // b.Hash is left out cause that's what's set later as the result of this func
+		lenCtrl(b.Tx.Data) + string(b.Tx.Sender.bytes[:]) + string(b.Tx.Receiver.bytes[:]) + strconv.FormatUint(b.Tx.Amount, 10), // notice b.Tx.Signature is left out, that's also set later depending on this function's result
 	)
+}
+
+func Preimage(b *Sblock) []byte {
+	return append(PreimageWOSolution(b), strconv.FormatUint(b.Solution, 10)...)
 }
 
 // CalculateHashL calculates the hash of an Lblock.
@@ -108,16 +119,25 @@ func CalculateHashL(block *Lblock) string {
 
 // CalculateHashBytesL calculates the hash of an Lblock.
 func CalculateHashBytesL(b *Lblock) []byte {
+	return DoubleShasumBytes(PreimageL(b))
+}
+
+func PreimageWOSolutionL(b *Lblock) []byte {
 	sblocksConcatenated := ""
 	for i := range b.Sblocks {
-		sblocksConcatenated += strconv.FormatUint(b.Index, 10) + strconv.FormatUint(b.Timestamp, 10) + b.Data + b.Hash + b.PrevHash + strconv.FormatUint(b.Solution, 10) + string(b.Solver.bytes[:]) + // b.Hash is left out cause that's what's set later as the result of this func
-			b.Sblocks[i].Tx.Data + string(b.Sblocks[i].Tx.Sender.bytes[:]) + string(b.Sblocks[i].Tx.Receiver.bytes[:]) + strconv.FormatUint(b.Sblocks[i].Tx.Amount, 10)
+		sblocksConcatenated += string(Preimage(&b.Sblocks[i]))
 	}
-	return DoubleShasumBytes(
-		[]byte(strconv.FormatUint(b.Index, 10) + strconv.FormatUint(b.Timestamp, 10) + b.Data + b.PrevHash + strconv.FormatUint(b.Solution, 10) + string(b.Solver.bytes[:]) + // b.Hash is left out cause that's what's set later as the result of this func
-			sblocksConcatenated,
-		),
+	// lenCtrl hashes the bytes that a represents
+	// see comments in PreimageWOSolution for why lenCtrl is used
+	lenCtrl := func(a string) string { return string(DoubleShasumBytes([]byte(a))) }
+
+	return []byte(strconv.FormatUint(b.Index, 10) + strconv.FormatUint(b.Timestamp, 10) + lenCtrl(b.Data) + b.PrevHash + string(b.Solver.bytes[:]) + // b.Hash is left out cause that's what's set later as the result of this func
+		lenCtrl(sblocksConcatenated),
 	)
+}
+
+func PreimageL(b *Lblock) []byte {
+	return append(PreimageWOSolutionL(b), strconv.FormatUint(b.Solution, 10)...)
 }
 
 // MakeSignature signs a message with a private key.
