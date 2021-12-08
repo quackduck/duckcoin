@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
+	"math/big"
 	"net/http"
 	"os"
 	"os/user"
@@ -171,7 +172,6 @@ func mine(numOfBlocks, amount uint64, receiver util.Address, blockData, txData s
 //
 // makeSblock also fills in the transaction's Signature field and the block's Hash field
 func makeSblock(blockChan chan util.Sblock, privkey string, data string, solver util.Address, tx util.Transaction) {
-
 	err := loadDifficultyAndURL()
 	if err != nil {
 		fmt.Println("error: ", err)
@@ -185,97 +185,106 @@ func makeSblock(blockChan chan util.Sblock, privkey string, data string, solver 
 	for n := 1; uint(n) <= ArgThreads; n++ {
 		wg.Add(1)
 
-		go func(threadNum int, stop chan interface{}) {
-			defer wg.Done()
-
-			var lastHashrate float64
-			lastTime := time.Now()
-			newBlock := new(util.Sblock)
-
-		Restart:
-			t := time.Now()
-			newBlock.Timestamp = uint64(t.UnixNano() / 1000 / 1000)
-			newBlock.Index = oldBlock.Index + 1
-			newBlock.Data = data
-			newBlock.PrevHash = oldBlock.Hash
-			newBlock.Solver = solver
-			newBlock.Tx = tx
-
-			if newBlock.Tx.Amount == 0 {
-				newBlock.Tx.Data = ""
-				newBlock.Tx.Sender = util.Address{}
-				newBlock.Tx.Receiver = util.Address{}
-				newBlock.Tx.PubKey = ""
-				newBlock.Tx.Signature = ""
-			}
-
-			blockDataPreimage := util.PreimageWOSolution(newBlock)
-		Mine:
-			for i := uint64(threadNum); ; i++ { // stuff in this loop needs to be super optimized
-				select {
-				case b := <-blockChan:
-					if oldBlock != b {
-						oldBlock = b
-						goto Restart
-					}
-				case <-stop:
-					return
-				default:
-					newBlock.Solution = i
-					if i&(1<<19-1) == 0 && i != 0 { // optimize to check every 131072*2 iterations (bitwise ops are faster)
-						var arrow string
-						curr := 1 << 19 / time.Since(lastTime).Seconds() / 1000.0 // iterations since last time / time since last time / 1000 = kHashes
-						lastTime = time.Now()
-						if lastHashrate-curr > 50 {
-							arrow = gchalk.RGB(255, 165, 0)("↓")
-							lastHashrate = curr
-						} else if curr-lastHashrate > 50 {
-							arrow = gchalk.BrightCyan("↑")
-							lastHashrate = curr
-						} else {
-							arrow = " "
-						}
-						fmt.Printf("%d: %s Rate: %s kH/s, Checked: %s\n", threadNum, arrow, gchalk.BrightYellow(fmt.Sprintf("%d", int(math.Round(curr)))), gchalk.BrightGreen(fmt.Sprint(i)))
-					}
-					if !util.IsHashValidBytes(
-						util.DoubleShasumBytes(append(blockDataPreimage, strconv.FormatUint(newBlock.Solution, 10)...)),
-						target) {
-						continue
-					} else {
-						close(stop)
-						fmt.Println("\nSblock made! It took", time.Since(t).Round(time.Second/100))
-						//fmt.Printf("%x", util.DoubleShasumBytes(append(blockDataPreimage, strconv.FormatUint(newBlock.Solution, 10)...)))
-						newBlock.Hash = util.CalculateHash(newBlock)
-						if newBlock.Tx.Amount != 0 {
-							signature, err := util.MakeSignature(privkey, newBlock.Hash)
-							if err != nil {
-								fmt.Println(err)
-								return
-							}
-							newBlock.Tx.Signature = signature
-						}
-						fmt.Println(gchalk.BrightYellow(util.ToJSON(newBlock)))
-						r, err := http.Post(URL+"/sblocks/new", "application/json", strings.NewReader(util.ToJSON(newBlock)))
-						if err != nil {
-							fmt.Println(err)
-							return
-						}
-						fmt.Println("Sent block to server")
-						resp, ierr := ioutil.ReadAll(r.Body)
-						if ierr != nil {
-							fmt.Println(ierr)
-							return
-						}
-						fmt.Println("Server returned", gchalk.BrightGreen(string(resp)), "\n")
-						_ = r.Body.Close()
-						break Mine
-					}
-				}
-			}
-		}(n, stopChan)
+		go mineThreadWorker(wg, oldBlock, target, n, stopChan, blockChan, privkey, data, solver, tx)
+		time.Sleep(time.Millisecond * 100) // also helps each thread have a unique timestamp
 	}
 	wg.Wait()
 	return
+}
+
+func mineThreadWorker(wg *sync.WaitGroup, oldBlock util.Sblock, target *big.Int, threadNum int, stop chan interface{},
+	blockChan chan util.Sblock, privkey string, data string, solver util.Address, tx util.Transaction) {
+	defer wg.Done()
+
+	var lastHashrate float64
+	lastTime := time.Now()
+	newBlock := new(util.Sblock)
+
+Restart:
+	t := time.Now()
+	newBlock.Timestamp = uint64(t.UnixNano() / 1000 / 1000)
+	newBlock.Index = oldBlock.Index + 1
+	newBlock.Data = data
+	newBlock.PrevHash = oldBlock.Hash
+	newBlock.Solver = solver
+	newBlock.Tx = tx
+
+	if newBlock.Tx.Amount == 0 {
+		newBlock.Tx.Data = ""
+		newBlock.Tx.Sender = util.Address{}
+		newBlock.Tx.Receiver = util.Address{}
+		newBlock.Tx.PubKey = ""
+		newBlock.Tx.Signature = ""
+	}
+
+	blockDataPreimage := util.PreimageWOSolution(newBlock)
+Mine:
+	for i := uint64(0); ; i++ { // stuff in this loop needs to be super optimized
+		select {
+		case b := <-blockChan:
+			if oldBlock != b {
+				oldBlock = b
+				goto Restart
+			}
+		case <-stop:
+			return
+		default:
+			newBlock.Solution = i
+			if i&(1<<19-1) == 0 && i != 0 { // optimize to check every 131072*2 iterations (bitwise ops are faster)
+				var arrow string
+				curr := 1 << 19 / time.Since(lastTime).Seconds() / 1000.0 // iterations since last time / time since last time / 1000 = kHashes
+				lastTime = time.Now()
+				if lastHashrate-curr > 50 {
+					arrow = gchalk.RGB(255, 165, 0)("↓")
+					lastHashrate = curr
+				} else if curr-lastHashrate > 50 {
+					arrow = gchalk.BrightCyan("↑")
+					lastHashrate = curr
+				} else {
+					arrow = " "
+				}
+				fmt.Printf("%d: %s Rate: %s kH/s, Checked: %s\n", threadNum, arrow, gchalk.BrightYellow(fmt.Sprintf("%d", int(math.Round(curr)))), gchalk.BrightGreen(fmt.Sprint(i)))
+			}
+			if !util.IsHashValidBytes(
+				util.DoubleShasumBytes(append(blockDataPreimage, strconv.FormatUint(newBlock.Solution, 10)...)),
+				target) {
+				continue
+			} else {
+				close(stop)
+				fmt.Println("\nSblock made! It took", time.Since(t).Round(time.Second/100))
+				//fmt.Printf("%x", util.DoubleShasumBytes(append(blockDataPreimage, strconv.FormatUint(newBlock.Solution, 10)...)))
+				newBlock.Hash = util.CalculateHash(newBlock)
+				if newBlock.Tx.Amount != 0 {
+					signature, err := util.MakeSignature(privkey, newBlock.Hash)
+					if err != nil {
+						fmt.Println(err)
+						return
+					}
+					newBlock.Tx.Signature = signature
+				}
+				fmt.Println(gchalk.BrightYellow(util.ToJSON(newBlock)))
+				if sendBlock(newBlock) != nil {
+					return
+				}
+				break Mine
+			}
+		}
+	}
+}
+
+func sendBlock(newBlock *util.Sblock) error {
+	r, err := http.Post(URL+"/sblocks/new", "application/json", strings.NewReader(util.ToJSON(newBlock)))
+	if err != nil {
+		return err
+	}
+	fmt.Println("Sent block to server")
+	resp, ierr := ioutil.ReadAll(r.Body)
+	if ierr != nil {
+		return err
+	}
+	fmt.Println("Server returned", gchalk.BrightGreen(string(resp)), "\n")
+	r.Body.Close()
+	return nil
 }
 
 // loadDifficultyAndURL loads the server URL from the config file, and then loads the difficulty by contacting that server.
