@@ -10,6 +10,10 @@ import (
 	"strconv"
 )
 
+
+// TODO: use levelDB instead of boltDB maybe
+
+
 var (
 	db             *bolt.DB
 	numToBlock     = []byte("num -> block")
@@ -150,7 +154,7 @@ func removeFromBalance(tx *bolt.Tx, address Address, delta uint64) error {
 	return nil
 }
 
-func GetBlockByIndex(i uint64) (*Sblock, error) {
+func GetSblockByIndex(i uint64) (*Sblock, error) {
 	if i == 0 {
 		return genesis, nil
 	}
@@ -169,7 +173,7 @@ func GetBlockByIndex(i uint64) (*Sblock, error) {
 	return ret, nil
 }
 
-func GetBlockByHash(hash string) (*Sblock, error) {
+func GetSblockByHash(hash string) (*Sblock, error) {
 	ret := new(Sblock)
 	if err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(hashToNum)
@@ -178,7 +182,7 @@ func GetBlockByHash(hash string) (*Sblock, error) {
 		if err != nil {
 			return err
 		}
-		ret, err = GetBlockByIndex(i)
+		ret, err = GetSblockByIndex(i)
 		return err
 	}); err != nil {
 		return nil, err
@@ -186,7 +190,7 @@ func GetBlockByHash(hash string) (*Sblock, error) {
 	return ret, nil
 }
 
-func GetNewestBlock() (*Sblock, error) {
+func GetNewestSblock() (*Sblock, error) {
 	if newestIsGenesis {
 		return genesis, nil
 	}
@@ -286,16 +290,6 @@ func serialize(b *Sblock) []byte {
 	}
 	return ret
 }
-
-//func serializeAddress(addr string) []byte {
-//	// serialized format: version char + decoded base64
-//	// addr format: Q + version char + base64(shasum(pubkey)[:20])
-//	return append([]byte{addr[1]}, deb64(addr[2:])...)
-//}
-//
-//func deserializeAddress(addrBytes []byte) string {
-//	return "Q" + string(addrBytes[0]) + b64(addrBytes[1:])
-//}
 
 func serializeHash(hash string) []byte {
 	hashInt, ok := new(big.Int).SetString(hash, 16)

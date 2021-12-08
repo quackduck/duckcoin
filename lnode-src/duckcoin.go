@@ -20,12 +20,12 @@ import (
 var (
 	NewestBlock *util.Sblock
 
-	ReCalcInterval   = 100 // Recalculate difficulty every 100 blocks
+	ReCalcInterval   = 100 // Recalculate difficulty every 100 sblocks
 	Past100Durations = make([]time.Duration, 0, ReCalcInterval)
 	NewestBlockTime  = time.Now()
 	TargetDuration   = time.Second * 30
 
-	// Difficulty is the number of hashes needed for a block to be valid on average.
+	// Difficulty is the number of hashes needed for an sblock to be valid on average.
 	// See util.GetTarget for more information.
 	Difficulty uint64
 
@@ -69,7 +69,7 @@ func main() {
 	util.DBInit()
 
 	Past100Durations = append(Past100Durations, TargetDuration)
-	Difficulty = 1048576 * 1 // EDITT!!!! TODO
+	Difficulty = 1048576 * 6 // EDITT!!!! TODO
 
 	if err := setup(); err != nil {
 		fmt.Println("error: ", err)
@@ -77,10 +77,10 @@ func main() {
 	}
 
 	m := mux.NewRouter()
-	m.HandleFunc("/blocks", handleGetBlocks).Methods("GET")
+	m.HandleFunc("/sblocks", handleGetSblocks).Methods("GET")
 	m.HandleFunc("/balances", handleGetBalances).Methods("GET")
-	m.HandleFunc("/blocks/new", handleWriteBlock).Methods("POST")
-	m.HandleFunc("/blocks/newest", handleGetNewest).Methods("GET")
+	m.HandleFunc("/sblocks/new", handleWriteSblock).Methods("POST")
+	m.HandleFunc("/sblocks/newest", handleGetNewest).Methods("GET")
 
 	m.HandleFunc("/difficulty", func(w http.ResponseWriter, r *http.Request) {
 		_, err := w.Write([]byte(strconv.FormatInt(int64(Difficulty), 10)))
@@ -120,7 +120,7 @@ func main() {
 
 func setup() error {
 	var err error
-	NewestBlock, err = util.GetNewestBlock()
+	NewestBlock, err = util.GetNewestSblock()
 	if err != nil {
 		return err
 	}
@@ -141,13 +141,13 @@ func addBlockToChain(b *util.Sblock) {
 	NewestBlock = b
 }
 
-func handleGetBlocks(w http.ResponseWriter, r *http.Request) {
+func handleGetSblocks(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 
 	var i uint64
 	blockData := make([]byte, 0, 500*1024)
 	for i = 0; i <= NewestBlock.Index; i++ {
-		b, err := util.GetBlockByIndex(i)
+		b, err := util.GetSblockByIndex(i)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -188,7 +188,7 @@ func handleGetNewest(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
-func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
+func handleWriteSblock(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	w.Header().Set("Content-Type", "application/json")

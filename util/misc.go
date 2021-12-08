@@ -10,7 +10,6 @@ import (
 )
 
 // ToJSON is a convenience method for serializing to JSON.
-// Use ToJSONNice for output seen by humans.
 func ToJSON(v interface{}) string {
 	s, _ := json.MarshalIndent(v, "", "   ")
 	return string(s)
