@@ -78,7 +78,9 @@ func WriteBlockDB(blks ...*Block) {
 				panic(err)
 				//return err
 			}
-			if v.Tx.Amount > 0 {
+			if v.Tx.Sender == v.Tx.Receiver {
+				// don't need to do anything
+			} else if v.Tx.Amount > 0 {
 				// no reward for solver so we can give that reward to the lnodes (TODO).
 
 				senderBalanceBytes := tx.Bucket(addrToBalances).Get(deb64(v.Tx.Sender))
