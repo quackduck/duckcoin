@@ -300,7 +300,8 @@ func serializeHash(hash string) []byte {
 }
 
 func encodeVarintBytes(writeTo []byte, data ...[]byte) []byte {
-	buf := make([]byte, binary.MaxVarintLen64)
+	//buf := make([]byte, binary.MaxVarintLen64)
+	var buf []byte
 	for _, elem := range data {
 		buf = make([]byte, binary.MaxVarintLen64)
 		n := binary.PutUvarint(buf, uint64(len(elem)))
@@ -360,7 +361,7 @@ func deserialize(buf []byte) *Sblock {
 		buf, data = decodeVarintBytes(buf)
 		ret.Tx.PubKey = b64(data)
 
-		buf, data = decodeVarintBytes(buf)
+		_, data = decodeVarintBytes(buf)
 		ret.Tx.Signature = b64(data)
 	}
 	return ret
@@ -385,8 +386,8 @@ func decodeVarintBytes(readFrom []byte) (newBuf []byte, data []byte) {
 	i, length := binary.Uvarint(readFrom)
 	dataLen := int(i)
 	readFrom = readFrom[length:]
-	dataBytes := make([]byte, 0, dataLen)
-	dataBytes = readFrom[:dataLen]
+	//dataBytes := make([]byte, 0, dataLen)
+	dataBytes := readFrom[:dataLen]
 	readFrom = readFrom[dataLen:]
 	return readFrom, dataBytes
 }

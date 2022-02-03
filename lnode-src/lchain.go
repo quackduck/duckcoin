@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/quackduck/duckcoin/util"
 	"io"
 	"net/http"
@@ -10,7 +11,7 @@ import (
 
 func sendToLnodes(s *util.Lblock) error {
 	for _, lnode := range Lnodes {
-		_, err := http.Post(lnode + "/lblocks/new", "application/json", strings.NewReader(util.ToJSON(s)))
+		_, err := http.Post(lnode+"/lblocks/new", "application/json", strings.NewReader(util.ToJSON(s)))
 		if err != nil {
 			return err
 		}
@@ -31,6 +32,8 @@ func handleWriteLblock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	fmt.Println("Received a new lblock from " + r.RemoteAddr + ":\n" + util.ToJSON(b))
+
 	//if err := isValid(b, NewestBlock); err == nil {
 	//	addBlockToChain(b)
 	//} else {
@@ -38,5 +41,5 @@ func handleWriteLblock(w http.ResponseWriter, r *http.Request) {
 	//	fmt.Println("Rejected a block")
 	//	return
 	//}
-	respondWithJSON(w, http.StatusCreated, "Sblock accepted.")
+	respondWithJSON(w, http.StatusCreated, "Lblock accepted.")
 }

@@ -18,6 +18,8 @@ import (
 )
 
 var (
+	DefaultPort = "4213" // D U C => 4 21 3
+
 	NewestBlock *util.Sblock
 
 	ReCalcInterval   = 100 // Recalculate difficulty every 100 sblocks
@@ -66,7 +68,7 @@ func main() {
 		return
 	}
 
-	util.DBInit()
+	util.DBInit() // opens duckchain.db in current working dir
 
 	Past100Durations = append(Past100Durations, TargetDuration)
 	Difficulty = 1048576 * 6 // EDITT!!!! TODO
@@ -78,9 +80,16 @@ func main() {
 
 	m := mux.NewRouter()
 	m.HandleFunc("/sblocks", handleGetSblocks).Methods("GET")
-	m.HandleFunc("/balances", handleGetBalances).Methods("GET")
+	m.HandleFunc("/balances", getHandleGetBalancesFunc(func(address util.Address) string {
+		return address.Emoji
+	})).Methods("GET")
+	m.HandleFunc("/balances-text", getHandleGetBalancesFunc(func(address util.Address) string {
+		return address.Text
+	})).Methods("GET")
 	m.HandleFunc("/sblocks/new", handleWriteSblock).Methods("POST")
 	m.HandleFunc("/sblocks/newest", handleGetNewest).Methods("GET")
+
+	m.HandleFunc("/lblocks/new", handleWriteLblock).Methods("POST")
 
 	m.HandleFunc("/difficulty", func(w http.ResponseWriter, r *http.Request) {
 		_, err := w.Write([]byte(strconv.FormatInt(int64(Difficulty), 10)))
@@ -90,23 +99,14 @@ func main() {
 		}
 	}).Methods("GET")
 
-	go func() {
-		s := &http.Server{
-			Addr:           "0.0.0.0:80",
-			Handler:        m,
-			ReadTimeout:    10 * time.Minute,
-			WriteTimeout:   10 * time.Minute,
-			MaxHeaderBytes: 1 << 20,
-		}
-		if err := s.ListenAndServe(); err != nil {
-			fmt.Println(err)
-			return
-		}
-	}()
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = DefaultPort
+	}
 
-	fmt.Println("HTTP Server Listening on port 8080")
+	fmt.Println("HTTP Server Listening on port", port)
 	s := &http.Server{
-		Addr:           "0.0.0.0:8080",
+		Addr:           "0.0.0.0:" + port,
 		Handler:        m,
 		ReadTimeout:    10 * time.Minute,
 		WriteTimeout:   10 * time.Minute,
@@ -161,17 +161,23 @@ func handleGetSblocks(w http.ResponseWriter, r *http.Request) {
 	w.Write(blockData)
 }
 
-func handleGetBalances(w http.ResponseWriter, _ *http.Request) {
-	balancesNew := util.GetAllBalancesFloats()
-	bytes, err := json.MarshalIndent(balancesNew, "", "  ")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	_, err = w.Write(bytes)
-	if err != nil {
-		fmt.Println("error: ", err)
-		return
+func getHandleGetBalancesFunc(addrToString func(address util.Address) string) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		balances := util.GetAllBalancesFloats()
+		balancesJSONMap := make(map[string]float64, len(balances))
+		for addr, balance := range balances {
+			balancesJSONMap[addrToString(addr)] = balance
+		}
+		bytes, err := json.MarshalIndent(balancesJSONMap, "", "  ")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_, err = w.Write(bytes)
+		if err != nil {
+			fmt.Println("error: ", err)
+			return
+		}
 	}
 }
 
@@ -208,6 +214,22 @@ func handleWriteSblock(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Rejected a block")
 		return
 	}
+
+	go func() {
+		err := sendToLnodes(&util.Lblock{
+			Index:     23,
+			Timestamp: b.Timestamp,
+			Data:      "Yo bro, I just got a new block! " + b.Hash,
+			Hash:      b.Hash,
+			PrevHash:  b.PrevHash,
+			Solution:  b.Solution,
+			Solver:    b.Solver,
+			Sblocks:   []util.Sblock{*b},
+		})
+		if err != nil {
+			fmt.Println("error: ", err)
+		}
+	}()
 	respondWithJSON(w, http.StatusCreated, "Sblock accepted.")
 }
 
@@ -235,9 +257,9 @@ func isValid(newBlock, oldBlock *util.Sblock) error {
 	const blockDataLimit = 1e3 * 250
 	const txDataLimit = 1e3 * 250
 
-	if newBlock.Tx.Amount < 0 {
-		return errors.New("Amount is negative")
-	}
+	//if newBlock.Tx.Amount < 0 {
+	//	return errors.New("Amount is negative")
+	//}
 	if oldBlock.Index+1 != newBlock.Index {
 		return errors.New("Index should be " + strconv.FormatInt(int64(oldBlock.Index+1), 10))
 	}
@@ -282,7 +304,7 @@ func isValid(newBlock, oldBlock *util.Sblock) error {
 			return errors.New("Internal Server Error")
 		}
 		if senderBalance < newBlock.Tx.Amount { // notice that there is no reward for this block's PoW added to the sender's account first
-			return errors.New(fmt.Sprintf("Insufficient balance %d microquacks (sender balance) is less than %d microquacks (tx amount)", senderBalance, newBlock.Tx.Amount))
+			return fmt.Errorf("Insufficient balance %d microquacks (sender balance) is less than %d microquacks (tx amount)", senderBalance, newBlock.Tx.Amount)
 		}
 	}
 	return nil
@@ -297,7 +319,7 @@ func reCalcDifficulty() {
 	}
 	avg /= i
 	avgDur := time.Duration(avg)
-	fmt.Println(fmt.Sprintf("The average duration between blocks for the past %d blocks was: %s", ReCalcInterval, avgDur.String()))
+	fmt.Printf("The average duration between blocks for the past %d blocks was: %s\n", ReCalcInterval, avgDur.String())
 	// TargetDuration/avgDur is the scale factor for what the current target is
 	// if avgDur is higher than TargetDuration, then the Difficulty will be made lower
 	// if avgDur is lower, then the Difficulty will be made higher
@@ -325,8 +347,11 @@ func parseLnodesFile(f string) ([]string, error) {
 		return nil, err
 	}
 	s := strings.Split(string(data), "\n")
+	newArr := make([]string, 0, len(s))
 	for i := range s {
-		s[i] = strings.TrimSpace(s[i])
+		if strings.TrimSpace(s[i]) != "" {
+			newArr = append(newArr, strings.TrimSpace(s[i]))
+		}
 	}
-	return s, nil
+	return newArr, nil
 }
