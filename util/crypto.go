@@ -174,7 +174,7 @@ func IsHashValid(hash string, target *big.Int) bool {
 	if !ok {
 		return ok
 	}
-	return IsHashValidBytes(d.FillBytes(make([]byte, 32, 32)), target)
+	return IsHashValidBytes(d.FillBytes(make([]byte, 32)), target)
 }
 
 // IsHashValidBytes checks if a hash is a valid block hash

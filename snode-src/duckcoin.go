@@ -179,7 +179,7 @@ func makeSblock(blockChan chan util.Sblock, privkey string, data string, solver 
 	fmt.Println(gchalk.BrightYellow(fmt.Sprint("Current difficulty: ", Difficulty)))
 	target := util.GetTarget(Difficulty)
 	oldBlock := <-blockChan
-	stopChan := make(chan interface{}, 0)
+	stopChan := make(chan interface{})
 	wg := new(sync.WaitGroup)
 
 	for n := 1; uint(n) <= ArgThreads; n++ {
@@ -189,15 +189,17 @@ func makeSblock(blockChan chan util.Sblock, privkey string, data string, solver 
 		time.Sleep(time.Millisecond * 100) // also helps each thread have a unique timestamp
 	}
 	wg.Wait()
-	return
 }
 
 func mineThreadWorker(wg *sync.WaitGroup, oldBlock util.Sblock, target *big.Int, threadNum int, stop chan interface{},
 	blockChan chan util.Sblock, privkey string, data string, solver util.Address, tx util.Transaction) {
 	defer wg.Done()
 
-	var lastHashrate float64
-	lastTime := time.Now()
+	lastHashrate := new(float64)
+	*lastHashrate = 0
+	lastTime := new(time.Time)
+	*lastTime = time.Now()
+
 	newBlock := new(util.Sblock)
 
 Restart:
@@ -231,19 +233,9 @@ Mine:
 		default:
 			newBlock.Solution = i
 			if i&(1<<19-1) == 0 && i != 0 { // optimize to check every 131072*2 iterations (bitwise ops are faster)
-				var arrow string
-				curr := 1 << 19 / time.Since(lastTime).Seconds() / 1000.0 // iterations since last time / time since last time / 1000 = kHashes
-				lastTime = time.Now()
-				if lastHashrate-curr > 50 {
-					arrow = gchalk.RGB(255, 165, 0)("↓")
-					lastHashrate = curr
-				} else if curr-lastHashrate > 50 {
-					arrow = gchalk.BrightCyan("↑")
-					lastHashrate = curr
-				} else {
-					arrow = " "
-				}
-				fmt.Printf("%d: %s Rate: %s kH/s, Checked: %s\n", threadNum, arrow, gchalk.BrightYellow(fmt.Sprintf("%d", int(math.Round(curr)))), gchalk.BrightGreen(fmt.Sprint(i)))
+				//fmt.Println(lastTime, lastHashrate, threadNum, i)
+				statusUpdate(lastTime, lastHashrate, threadNum, i)
+				//fmt.Println(lastTime, lastHashrate, threadNum, i)
 			}
 			if !util.IsHashValidBytes(
 				util.DoubleShasumBytes(append(blockDataPreimage, strconv.FormatUint(newBlock.Solution, 10)...)),
@@ -270,6 +262,22 @@ Mine:
 			}
 		}
 	}
+}
+
+func statusUpdate(lastTime *time.Time, lastHashrate *float64, threadNum int, i uint64) {
+	var arrow string
+	curr := 1 << 19 / time.Since(*lastTime).Seconds() / 1000.0 // iterations since last time / time since last time / 1000 = kHashes
+	*lastTime = time.Now()
+	if *lastHashrate-curr > 50 {
+		arrow = gchalk.RGB(255, 165, 0)("↓")
+		*lastHashrate = curr
+	} else if curr-(*lastHashrate) > 50 {
+		arrow = gchalk.BrightCyan("↑")
+		*lastHashrate = curr
+	} else {
+		arrow = " "
+	}
+	fmt.Printf("%d: %s Rate: %s kH/s, Checked: %s\n", threadNum, arrow, gchalk.BrightYellow(fmt.Sprintf("%d", int(math.Round(curr)))), gchalk.BrightGreen(fmt.Sprint(i)))
 }
 
 func sendBlock(newBlock *util.Sblock) error {
