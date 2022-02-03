@@ -7,5 +7,5 @@
 .idea
 /icoin
 .DS_Store
-/lnode-src/duckchain.db
+/lnode-src/chaindata-bolt.db
 /lnode-src/test
