@@ -5,14 +5,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	bolt "go.etcd.io/bbolt"
 	"math/big"
 	"strconv"
+
+	bolt "go.etcd.io/bbolt"
 )
-
-
-// TODO: use levelDB instead of boltDB maybe
-
 
 var (
 	db             *bolt.DB
@@ -22,8 +19,8 @@ var (
 
 	Reward uint64 = 1e6
 
-	newestIsGenesis = false // TODO: store genesis as a normal block
-	genesis         = &Sblock{
+	//newestIsGenesis = false // TODO: store genesis as a normal block
+	genesis = &Sblock{
 		Index:     0,
 		Timestamp: 1633231790000,
 		Data: "This is the genesis block. Made by Ishan Goel: @quackduck on GitHub. " +
@@ -56,9 +53,9 @@ func DBInit() {
 		panic(err)
 	}
 	if err = db.Update(func(tx *bolt.Tx) error {
-		if tx.Bucket(numToBlock) == nil {
-			newestIsGenesis = true
-		}
+		//if tx.Bucket(numToBlock) == nil {
+		//	newestIsGenesis = true
+		//}
 		_, err := tx.CreateBucketIfNotExists(numToBlock)
 		if err != nil {
 			return err
@@ -70,6 +67,19 @@ func DBInit() {
 		_, err = tx.CreateBucketIfNotExists(addrToBalances)
 		if err != nil {
 			return err
+		}
+
+		if err := tx.Bucket(numToBlock).Put([]byte("newest"), serialize(genesis)); err != nil {
+			panic(err)
+			//return err
+		}
+		if err := tx.Bucket(numToBlock).Put([]byte("0"), serialize(genesis)); err != nil {
+			panic(err)
+			//return err
+		}
+		if err := tx.Bucket(hashToNum).Put(serializeHash(genesis.Hash), []byte("0")); err != nil {
+			panic(err)
+			//return err
 		}
 		for k, v := range genesisBalances {
 			buf := make([]byte, binary.MaxVarintLen64)
@@ -89,7 +99,7 @@ func WriteBlockDB(blks ...*Sblock) {
 	if err := db.Update(func(tx *bolt.Tx) error {
 		for _, v := range blks {
 			// store the newest block in idx -1
-			newestIsGenesis = false
+			//newestIsGenesis = false
 			if err := tx.Bucket(numToBlock).Put([]byte("newest"), serialize(v)); err != nil {
 				panic(err)
 				//return err
@@ -191,9 +201,9 @@ func GetSblockByHash(hash string) (*Sblock, error) {
 }
 
 func GetNewestSblock() (*Sblock, error) {
-	if newestIsGenesis {
-		return genesis, nil
-	}
+	//if newestIsGenesis {
+	//	return genesis, nil
+	//}
 	ret := new(Sblock)
 	if err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(numToBlock)
@@ -380,13 +390,12 @@ func b64(b []byte) string {
 	return base64.StdEncoding.EncodeToString(b)
 }
 
-// decodeVarintStr returns the next string decoded from the format len (as varint) + string.
-// It advances buf to the next thing to be read and returns it too.
+// decodeVarintBytes returns the next chunk decoded from the format chunk len (as varint) + chunk.
+// It advances buf to the next chunk and returns it too.
 func decodeVarintBytes(readFrom []byte) (newBuf []byte, data []byte) {
 	i, length := binary.Uvarint(readFrom)
 	dataLen := int(i)
 	readFrom = readFrom[length:]
-	//dataBytes := make([]byte, 0, dataLen)
 	dataBytes := readFrom[:dataLen]
 	readFrom = readFrom[dataLen:]
 	return readFrom, dataBytes
