@@ -103,7 +103,6 @@ func main() {
 	if port == "" {
 		port = DefaultPort
 	}
-
 	fmt.Println("HTTP Server Listening on port", port)
 	s := &http.Server{
 		Addr:           "0.0.0.0:" + port,
@@ -216,7 +215,7 @@ func handleWriteSblock(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go func() {
-		err := sendToLnodes(&util.Lblock{
+		err := sendToLnodes(&util.Lblock{ // just a test for now, no mining is happening
 			Index:     23,
 			Timestamp: b.Timestamp,
 			Data:      "Yo bro, I just got a new block! " + b.Hash,
@@ -224,7 +223,7 @@ func handleWriteSblock(w http.ResponseWriter, r *http.Request) {
 			PrevHash:  b.PrevHash,
 			Solution:  b.Solution,
 			Solver:    b.Solver,
-			Sblocks:   []util.Sblock{*b},
+			Sblocks:   []*util.Sblock{b, b},
 		})
 		if err != nil {
 			fmt.Println("error: ", err)

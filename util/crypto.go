@@ -28,14 +28,14 @@ type Lblock struct {
 	Data string
 	// Hash stores the hash of this Lblock as computed by CalculateHash
 	Hash string
-	// PrevHash is the hash of the previous Sblock
+	// PrevHash is the hash of the previous Lblock
 	PrevHash string
 	// Solution is the nonce value that makes the Hash be under some target value
 	Solution uint64
 	// Solver is the address of the sender. Address format: Q + version char + base64(shasum(pubkey)[:20])
 	Solver Address `json:",omitempty"`
-	// Sblocks contains the Sblocks that are part of this Lblock
-	Sblocks []Sblock
+	// Sblocks contains the Sblocks part of this Lblock
+	Sblocks []*Sblock
 }
 
 // An Sblock is one block in the chain of some Lnode. It optionally contains a transaction and arbitrary data.
@@ -125,7 +125,7 @@ func CalculateHashBytesL(b *Lblock) []byte {
 func PreimageWOSolutionL(b *Lblock) []byte {
 	sblocksConcatenated := ""
 	for i := range b.Sblocks {
-		sblocksConcatenated += string(Preimage(&b.Sblocks[i]))
+		sblocksConcatenated += string(Preimage(b.Sblocks[i]))
 	}
 	// lenCtrl hashes the bytes that a represents
 	// see comments in PreimageWOSolution for why lenCtrl is used
