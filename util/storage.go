@@ -65,11 +65,11 @@ func DBInit() {
 			return err
 		}
 
-		if err := tx.Bucket(numToBlock).Put([]byte("newest"), serializeSblock(genesis)); err != nil {
+		if err := tx.Bucket(numToBlock).Put([]byte("newest"), genesis.serialize()); err != nil {
 			panic(err)
 			//return err
 		}
-		if err := tx.Bucket(numToBlock).Put([]byte("0"), serializeSblock(genesis)); err != nil {
+		if err := tx.Bucket(numToBlock).Put([]byte("0"), genesis.serialize()); err != nil {
 			panic(err)
 			//return err
 		}
@@ -96,13 +96,13 @@ func WriteBlockDB(blks ...*Sblock) {
 		for _, v := range blks {
 			// store the newest block in idx -1
 			//newestIsGenesis = false
-			if err := tx.Bucket(numToBlock).Put([]byte("newest"), serializeSblock(v)); err != nil {
+			if err := tx.Bucket(numToBlock).Put([]byte("newest"), v.serialize()); err != nil {
 				panic(err)
 				//return err
 			}
 
 			num := []byte(strconv.FormatUint(v.Index, 10)) // TODO: serialize idx num too
-			if err := tx.Bucket(numToBlock).Put(num, serializeSblock(v)); err != nil {
+			if err := tx.Bucket(numToBlock).Put(num, v.serialize()); err != nil {
 				panic(err)
 				//return err
 			}
@@ -245,7 +245,7 @@ func GetAllBalancesFloats() map[Address]float64 {
 	return balances
 }
 
-func serializeSblock(b *Sblock) []byte {
+func (b *Sblock) serialize() []byte {
 	ret := make([]byte, 0, 1024)
 
 	buf := make([]byte, binary.MaxVarintLen64)
@@ -367,7 +367,7 @@ func deserializeSblock(buf []byte) *Sblock {
 	return ret
 }
 
-func serializeLblock(b *Lblock) []byte {
+func (b *Lblock) serialize() []byte {
 	ret := make([]byte, 0, 1024)
 
 	buf := make([]byte, binary.MaxVarintLen64)
@@ -409,7 +409,7 @@ func serializeLblock(b *Lblock) []byte {
 		blocks = append(blocks, buf[:n]...)
 
 		for _, sb := range b.Sblocks {
-			blocks = encodeVarintBytes(blocks, serializeSblock(sb))
+			blocks = encodeVarintBytes(blocks, sb.serialize())
 		}
 		ret = encodeVarintBytes(ret, blocks)
 	} else {

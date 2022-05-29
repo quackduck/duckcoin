@@ -219,7 +219,7 @@ Restart:
 		newBlock.Tx.Signature = ""
 	}
 
-	blockDataPreimage := util.PreimageWOSolution(newBlock)
+	blockDataPreimage := newBlock.PreimageWOSolution()
 Mine:
 	for i := uint64(0); ; i++ { // stuff in this loop needs to be super optimized
 		select {
@@ -245,7 +245,7 @@ Mine:
 				close(stop)
 				fmt.Println("\nSblock made! It took", time.Since(t).Round(time.Second/100))
 				//fmt.Printf("%x", util.DoubleShasumBytes(append(blockDataPreimage, strconv.FormatUint(newBlock.Solution, 10)...)))
-				newBlock.Hash = util.CalculateHash(newBlock)
+				newBlock.Hash = newBlock.CalculateHash()
 				if newBlock.Tx.Amount != 0 {
 					signature, err := util.MakeSignature(privkey, newBlock.Hash)
 					if err != nil {
@@ -358,7 +358,7 @@ func parseArgs() {
 		if err != nil {
 			fmt.Println("error: could not parse address: " + err.Error())
 		}
-		if err = util.IsAddressValid(ArgReceiver); err != nil {
+		if err = ArgReceiver.IsValid(); err != nil {
 			fmt.Println("error: invalid receiver address, check if you mistyped it: " + err.Error())
 			os.Exit(1)
 		}

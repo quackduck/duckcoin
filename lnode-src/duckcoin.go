@@ -268,10 +268,10 @@ func isValid(newBlock, oldBlock *util.Sblock) error {
 	if uint64(time.Now().UnixMilli())-newBlock.Timestamp > 1e3*60*5 { // 5 minutes in millis
 		return errors.New("Sblock timestamp is not within 5 minutes before current time. What are you trying to pull off here?")
 	}
-	if err := util.IsAddressValid(newBlock.Solver); err != nil {
+	if err := newBlock.Solver.IsValid(); err != nil {
 		return errors.New("Sender is invalid: " + err.Error())
 	}
-	if util.CalculateHash(newBlock) != newBlock.Hash {
+	if newBlock.CalculateHash() != newBlock.Hash {
 		return errors.New("Sblock Hash does not match actual hash.")
 	}
 	if !util.IsHashValid(newBlock.Hash, util.GetTarget(Difficulty)) {
@@ -284,7 +284,7 @@ func isValid(newBlock, oldBlock *util.Sblock) error {
 		return errors.New("Transaction's Data field is too large. Should be >= 250 kb")
 	}
 	if newBlock.Tx.Amount > 0 {
-		if util.IsAddressValid(newBlock.Tx.Sender) != nil || util.IsAddressValid(newBlock.Tx.Receiver) != nil || !util.IsValidBase64(newBlock.Tx.PubKey) ||
+		if newBlock.Tx.Sender.IsValid() != nil || newBlock.Tx.Receiver.IsValid() != nil || !util.IsValidBase64(newBlock.Tx.PubKey) ||
 			!util.IsValidBase64(newBlock.Tx.Signature) {
 			return errors.New("At least one of the Sender, Receiver, PubKey or Signature is not valid. What are you trying to pull here?")
 		}

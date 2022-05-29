@@ -88,18 +88,18 @@ func GetTarget(difficulty uint64) *big.Int {
 }
 
 // CalculateHash calculates the hash of a Sblock.
-func CalculateHash(block *Sblock) string {
-	return hex.EncodeToString(CalculateHashBytes(block))
+func (b *Sblock) CalculateHash() string {
+	return hex.EncodeToString(b.CalculateHashBytes())
 }
 
 // CalculateHashBytes calculates the hash of a Sblock.
-func CalculateHashBytes(b *Sblock) []byte {
-	return DoubleShasumBytes(Preimage(b))
+func (b *Sblock) CalculateHashBytes() []byte {
+	return DoubleShasumBytes(b.Preimage())
 }
 
 // PreimageWOSolution returns the data to be hashed to create the hash of an Sblock, but without the Solution field taken into account.
 // This is useful when mining.
-func PreimageWOSolution(b *Sblock) []byte {
+func (b *Sblock) PreimageWOSolution() []byte {
 	// lenCtrl hashes the bytes that a represents
 	lenCtrl := func(a string) string { return string(DoubleShasumBytes([]byte(a))) }
 	// all data fields are length-controlled so that the preimage always has around the same size (amount + timestamp + solution sizes can change, but not much)
@@ -108,24 +108,24 @@ func PreimageWOSolution(b *Sblock) []byte {
 	)
 }
 
-func Preimage(b *Sblock) []byte {
-	return append(PreimageWOSolution(b), strconv.FormatUint(b.Solution, 10)...)
+func (b *Sblock) Preimage() []byte {
+	return append(b.PreimageWOSolution(), strconv.FormatUint(b.Solution, 10)...)
 }
 
-// CalculateHashL calculates the hash of an Lblock.
-func CalculateHashL(block *Lblock) string {
-	return hex.EncodeToString(CalculateHashBytesL(block))
+// CalculateHash calculates the hash of an Lblock.
+func (b *Lblock) CalculateHash() string {
+	return hex.EncodeToString(b.CalculateHashBytes())
 }
 
-// CalculateHashBytesL calculates the hash of an Lblock.
-func CalculateHashBytesL(b *Lblock) []byte {
-	return DoubleShasumBytes(PreimageL(b))
+// CalculateHashBytes calculates the hash of an Lblock.
+func (b *Lblock) CalculateHashBytes() []byte {
+	return DoubleShasumBytes(b.Preimage())
 }
 
-func PreimageWOSolutionL(b *Lblock) []byte {
+func (b *Lblock) PreimageWOSolution() []byte {
 	sblocksConcatenated := ""
 	for i := range b.Sblocks {
-		sblocksConcatenated += string(Preimage(b.Sblocks[i]))
+		sblocksConcatenated += string(b.Sblocks[i].Preimage())
 	}
 	// lenCtrl hashes the bytes that a represents
 	// see comments in PreimageWOSolution for why lenCtrl is used
@@ -136,8 +136,8 @@ func PreimageWOSolutionL(b *Lblock) []byte {
 	)
 }
 
-func PreimageL(b *Lblock) []byte {
-	return append(PreimageWOSolutionL(b), strconv.FormatUint(b.Solution, 10)...)
+func (b *Lblock) Preimage() []byte {
+	return append(b.PreimageWOSolution(), strconv.FormatUint(b.Solution, 10)...)
 }
 
 // MakeSignature signs a message with a private key.
