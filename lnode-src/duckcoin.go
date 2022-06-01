@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -206,7 +205,7 @@ func handleWriteSblock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := isValid(b, NewestBlock); err == nil {
+	if err := util.IsValid(b, NewestBlock, util.GetTarget(Difficulty)); err == nil {
 		addBlockToChain(b)
 	} else {
 		respondWithJSON(w, http.StatusBadRequest, "Invalid block. "+err.Error())
@@ -250,63 +249,6 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 		fmt.Println("error: ", err)
 		return
 	}
-}
-
-func isValid(newBlock, oldBlock *util.Sblock) error {
-	const blockDataLimit = 1e3 * 250
-	const txDataLimit = 1e3 * 250
-
-	//if newBlock.Tx.Amount < 0 {
-	//	return errors.New("Amount is negative")
-	//}
-	if oldBlock.Index+1 != newBlock.Index {
-		return errors.New("Index should be " + strconv.FormatInt(int64(oldBlock.Index+1), 10))
-	}
-	if oldBlock.Hash != newBlock.PrevHash {
-		return errors.New("PrevHash should be " + oldBlock.Hash)
-	}
-	if uint64(time.Now().UnixMilli())-newBlock.Timestamp > 1e3*60*5 { // 5 minutes in millis
-		return errors.New("Sblock timestamp is not within 5 minutes before current time. What are you trying to pull off here?")
-	}
-	if err := newBlock.Solver.IsValid(); err != nil {
-		return errors.New("Sender is invalid: " + err.Error())
-	}
-	if newBlock.CalculateHash() != newBlock.Hash {
-		return errors.New("Sblock Hash does not match actual hash.")
-	}
-	if !util.IsHashValid(newBlock.Hash, util.GetTarget(Difficulty)) {
-		return errors.New("Sblock is not a solution (does not have Difficulty zeros in hash)")
-	}
-	if len(newBlock.Data) > blockDataLimit {
-		return errors.New("Sblock's Data field is too large. Should be >= 250 kb")
-	}
-	if len(newBlock.Tx.Data) > txDataLimit {
-		return errors.New("Transaction's Data field is too large. Should be >= 250 kb")
-	}
-	if newBlock.Tx.Amount > 0 {
-		if newBlock.Tx.Sender.IsValid() != nil || newBlock.Tx.Receiver.IsValid() != nil || !util.IsValidBase64(newBlock.Tx.PubKey) ||
-			!util.IsValidBase64(newBlock.Tx.Signature) {
-			return errors.New("At least one of the Sender, Receiver, PubKey or Signature is not valid. What are you trying to pull here?")
-		}
-		if util.KeyToAddress(newBlock.Tx.PubKey) != newBlock.Tx.Sender {
-			return errors.New("Pubkey does not match sender address")
-		}
-		if ok, err := util.CheckSignature(newBlock.Tx.Signature, newBlock.Tx.PubKey, newBlock.Hash); !ok {
-			if err != nil {
-				return err
-			} else {
-				return errors.New("Invalid signature")
-			}
-		}
-		senderBalance, err := util.GetBalanceByAddr(newBlock.Tx.Sender)
-		if err != nil {
-			return errors.New("Internal Server Error")
-		}
-		if senderBalance < newBlock.Tx.Amount { // notice that there is no reward for this block's PoW added to the sender's account first
-			return fmt.Errorf("Insufficient balance %d microquacks (sender balance) is less than %d microquacks (tx amount)", senderBalance, newBlock.Tx.Amount)
-		}
-	}
-	return nil
 }
 
 func reCalcDifficulty() {
