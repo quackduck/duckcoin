@@ -271,6 +271,29 @@ func duckToPublicKey(duckkey string) (*ecdsa.PublicKey, error) {
 }
 
 func IsValid(newBlock, oldBlock *Sblock, target *big.Int) error {
+	err := IsValidNoCheckDB(newBlock, oldBlock, target)
+	if err != nil {
+		return err
+	}
+	if uint64(time.Now().UnixMilli())-newBlock.Timestamp > 1e3*60*5 { // 5 minutes in millis
+		return errors.New("Sblock timestamp is not within 5 minutes before current time. What are you trying to pull off here?")
+	}
+	if newBlock.Tx.Amount > 0 {
+		senderBalance, err := GetBalanceByAddr(newBlock.Tx.Sender)
+		if err != nil {
+			return errors.New("Internal Server Error")
+		}
+		if senderBalance < newBlock.Tx.Amount { // notice that there is no reward for this block's PoW added to the sender's account first
+			return fmt.Errorf("Insufficient balance %d microquacks (sender balance) is less than %d microquacks (tx amount)", senderBalance, newBlock.Tx.Amount)
+		}
+	}
+	return nil
+}
+
+func IsValidNoCheckDB(newBlock, oldBlock *Sblock, target *big.Int) error {
+
+	fmt.Printf("%#v\n %#v\n %#v\n\n\n\n\n", newBlock, oldBlock, target.Text(16))
+
 	const blockDataLimit = 1e3 * 250
 	const txDataLimit = 1e3 * 250
 
@@ -282,9 +305,6 @@ func IsValid(newBlock, oldBlock *Sblock, target *big.Int) error {
 	}
 	if oldBlock.Hash != newBlock.PrevHash {
 		return errors.New("PrevHash should be " + oldBlock.Hash)
-	}
-	if uint64(time.Now().UnixMilli())-newBlock.Timestamp > 1e3*60*5 { // 5 minutes in millis
-		return errors.New("Sblock timestamp is not within 5 minutes before current time. What are you trying to pull off here?")
 	}
 	if err := newBlock.Solver.IsValid(); err != nil {
 		return errors.New("Sender is invalid: " + err.Error())
@@ -315,13 +335,6 @@ func IsValid(newBlock, oldBlock *Sblock, target *big.Int) error {
 			} else {
 				return errors.New("Invalid signature")
 			}
-		}
-		senderBalance, err := GetBalanceByAddr(newBlock.Tx.Sender)
-		if err != nil {
-			return errors.New("Internal Server Error")
-		}
-		if senderBalance < newBlock.Tx.Amount { // notice that there is no reward for this block's PoW added to the sender's account first
-			return fmt.Errorf("Insufficient balance %d microquacks (sender balance) is less than %d microquacks (tx amount)", senderBalance, newBlock.Tx.Amount)
 		}
 	}
 	return nil

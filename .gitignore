@@ -9,3 +9,4 @@
 .DS_Store
 /lnode-src/chaindata-bolt.db
 /lnode-src/test
+**/duckchain.db
