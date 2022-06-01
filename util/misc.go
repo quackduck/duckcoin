@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"os"
 )
@@ -79,8 +78,6 @@ func LoadKeysAndAddr(pubfile, privfile string) (pub, priv string, addr Address, 
 	if err != nil {
 		return "", "", Address{}, err
 	}
-	// go representation of the address
-	fmt.Printf("addr: %#v\n", KeyToAddress(pub))
 	return pub, priv, KeyToAddress(pub), nil
 }
 

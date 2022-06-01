@@ -291,9 +291,6 @@ func IsValid(newBlock, oldBlock *Sblock, target *big.Int) error {
 }
 
 func IsValidNoCheckDB(newBlock, oldBlock *Sblock, target *big.Int) error {
-
-	fmt.Printf("%#v\n %#v\n %#v\n\n\n\n\n", newBlock, oldBlock, target.Text(16))
-
 	const blockDataLimit = 1e3 * 250
 	const txDataLimit = 1e3 * 250
 
