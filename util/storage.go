@@ -53,15 +53,18 @@ func DBInit() {
 		panic(err)
 	}
 	if err = db.Update(func(tx *bolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists(numToBlock)
+		if tx.Bucket(numToBlock) != nil {
+			return nil
+		}
+		_, err := tx.CreateBucket(numToBlock)
 		if err != nil {
 			return err
 		}
-		_, err = tx.CreateBucketIfNotExists(hashToNum)
+		_, err = tx.CreateBucket(hashToNum)
 		if err != nil {
 			return err
 		}
-		_, err = tx.CreateBucketIfNotExists(addrToBalances)
+		_, err = tx.CreateBucket(addrToBalances)
 		if err != nil {
 			return err
 		}
@@ -260,9 +263,11 @@ func initUnconfirmedRewardMap() error {
 	}
 	if latest.Index != 0 {
 		unconfirmedRewardMap[latest.Solver]++
+	} else {
+		return nil
 	}
-	// get last 10 blocks excluding the latest one
-	for i := latest.Index - 10; i < latest.Index && i > 0; i++ {
+
+	for i := latest.Index - 1; i > 0 && i > latest.Index-10; i-- {
 		block, err := GetSblockByIndex(i)
 		if err != nil {
 			return err
