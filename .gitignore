@@ -1,5 +1,5 @@
-/*/duckcoin
 /*/duckcoin.exe
+/*/duckcoin
 /duckcoin
 /duckcoin.exe
 *key*
@@ -7,4 +7,6 @@
 .idea
 /icoin
 .DS_Store
-/lnode-src/duckchain.db
+/lnode-src/chaindata-bolt.db
+/lnode-src/test
+**/duckchain.db

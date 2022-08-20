@@ -6,11 +6,13 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
+	"math/big"
 	"net/http"
 	"os"
 	"os/user"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jwalton/gchalk"
@@ -25,7 +27,7 @@ var (
 	PrivkeyFile = getConfigDir() + "/privkey.pem"
 	URLFile     = getConfigDir() + "/url.txt"
 
-	// Difficulty is the number of hashes needed for a block to be valid on average.
+	// Difficulty is the on average number of hashes needed for a block to be valid.
 	//
 	// See util.GetTarget for more information on the relationship between targets and Difficulty.
 	Difficulty uint64
@@ -38,6 +40,7 @@ var (
 	ArgMessage     string
 	ArgAmount      uint64
 	ArgNumOfBlocks uint64 = math.MaxUint64
+	ArgThreads     uint   = 1
 
 	HelpMsg = `Duckcoin - quack money
 
@@ -64,7 +67,6 @@ For more info go to https://github.com/quackduck/duckcoin`
 
 func main() {
 	var err error
-
 	parseArgs()
 	Pubkey, Privkey, Addr, err = util.LoadKeysAndAddr(PubkeyFile, PrivkeyFile)
 	if err != nil {
@@ -109,10 +111,11 @@ func main() {
 func mine(numOfBlocks, amount uint64, receiver util.Address, blockData, txData string) {
 	var i uint64
 	var b util.Sblock
+
 	for ; i < numOfBlocks; i++ {
 		doneChan := make(chan interface{}, 1)
-		blockChan := make(chan util.Sblock, 1)
-		r, err := http.Get(URL + "/blocks/newest")
+		blockChan := make(chan util.Sblock, ArgThreads)
+		r, err := http.Get(URL + "/sblocks/newest")
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -121,8 +124,7 @@ func mine(numOfBlocks, amount uint64, receiver util.Address, blockData, txData s
 		_ = r.Body.Close()
 		go func() {
 			blockChan <- b
-
-			makeBlock(
+			makeSblock(
 				blockChan, Privkey, blockData, Addr,
 				util.Transaction{
 					Data:      txData,
@@ -132,8 +134,7 @@ func mine(numOfBlocks, amount uint64, receiver util.Address, blockData, txData s
 					PubKey:    Pubkey,
 					Signature: "", // Signature filled in by the makeBlock function
 				})
-
-			doneChan <- true
+			close(doneChan)
 		}()
 
 		currBlock := b
@@ -143,47 +144,64 @@ func mine(numOfBlocks, amount uint64, receiver util.Address, blockData, txData s
 			case <-doneChan:
 				break Monitor
 			default:
-				c := time.After(time.Second / 2)
-				r, err := http.Get(URL + "/blocks/newest")
+				r, err := http.Get(URL + "/sblocks/newest")
 				if err != nil {
 					fmt.Println(err)
 					return
 				}
 				_ = json.NewDecoder(r.Body).Decode(&currBlock)
 				_ = r.Body.Close()
-				if currBlock != b {
-					if currBlock.Solver != Addr {
-						fmt.Println(gchalk.RGB(255, 165, 0)("Gotta restart, someone else got block " + strconv.Itoa(int(currBlock.Index))))
-						b = currBlock
+				//fmt.Println("Newest block:", currBlock.Index)
+				if currBlock != b && currBlock.Solver != Addr { // a new block that we didn't solve?
+					fmt.Println(gchalk.RGB(255, 165, 0)("Gotta restart, someone else got block " + strconv.Itoa(int(currBlock.Index))))
+					b = currBlock
+					for j := uint(0); j <= ArgThreads; j++ { // slightly hacky way to notify all threads to restart
 						blockChan <- currBlock
 					}
 				}
-				<-c
+				time.Sleep(time.Second / 2)
 			}
 		}
 	}
 }
 
-// makeBlock creates one new block by accepting a block sent on blockChan as the latest block,
+// makeSblock creates one new block by accepting a block sent on blockChan as the latest block,
 // and restarting mining in case a new block is sent on blockChan.
 // It takes in the user's private key to be used in signing tx, the transaction, if tx.Amount is not 0.
 // It also takes in the arbitrary data to be included in the block and the user's Addr (solver).
 //
-// makeBlock also fills in the transaction's Signature field and the block's Hash field
-func makeBlock(blockChan chan util.Sblock, privkey string, data string, solver util.Address, tx util.Transaction) {
-	var lastHashrate float64
-	lastTime := time.Now()
-
-	newBlock := new(util.Sblock)
-
+// makeSblock also fills in the transaction's Signature field and the block's Hash field
+func makeSblock(blockChan chan util.Sblock, privkey string, data string, solver util.Address, tx util.Transaction) {
 	err := loadDifficultyAndURL()
 	if err != nil {
 		fmt.Println("error: ", err)
 	}
 	fmt.Println(gchalk.BrightYellow(fmt.Sprint("Current difficulty: ", Difficulty)))
 	target := util.GetTarget(Difficulty)
-
 	oldBlock := <-blockChan
+	stopChan := make(chan interface{})
+	wg := new(sync.WaitGroup)
+
+	for n := 1; uint(n) <= ArgThreads; n++ {
+		wg.Add(1)
+
+		go mineThreadWorker(wg, oldBlock, target, n, stopChan, blockChan, privkey, data, solver, tx)
+		time.Sleep(time.Millisecond * 100) // also helps each thread have a unique timestamp
+	}
+	wg.Wait()
+}
+
+func mineThreadWorker(wg *sync.WaitGroup, oldBlock util.Sblock, target *big.Int, threadNum int, stop chan interface{},
+	blockChan chan util.Sblock, privkey string, data string, solver util.Address, tx util.Transaction) {
+	defer wg.Done()
+
+	lastHashrate := new(float64)
+	*lastHashrate = 0
+	lastTime := new(time.Time)
+	*lastTime = time.Now()
+
+	newBlock := new(util.Sblock)
+
 Restart:
 	t := time.Now()
 	newBlock.Timestamp = uint64(t.UnixNano() / 1000 / 1000)
@@ -200,7 +218,8 @@ Restart:
 		newBlock.Tx.PubKey = ""
 		newBlock.Tx.Signature = ""
 	}
-	//fmt.Println("Sblock template\n" + gchalk.BrightYellow(util.ToJSON(newBlock)))
+
+	blockDataPreimage := newBlock.PreimageWOSolution()
 Mine:
 	for i := uint64(0); ; i++ { // stuff in this loop needs to be super optimized
 		select {
@@ -209,31 +228,24 @@ Mine:
 				oldBlock = b
 				goto Restart
 			}
+		case <-stop:
+			return
 		default:
 			newBlock.Solution = i
 			if i&(1<<19-1) == 0 && i != 0 { // optimize to check every 131072*2 iterations (bitwise ops are faster)
-				var arrow string
-				curr := 1 << 19 / time.Since(lastTime).Seconds() / 1000.0 // iterations since last time / time since last time / 1000 = kHashes
-				lastTime = time.Now()
-				//if math.Round(curr/50) < math.Round(lastHashrate/50) {
-				if lastHashrate-curr > 50 {
-					arrow = gchalk.RGB(255, 165, 0)("↓")
-					lastHashrate = curr
-					// } else if math.Round(curr/50) > math.Round(lastHashrate/50) {
-				} else if curr-lastHashrate > 50 {
-					arrow = gchalk.BrightCyan("↑")
-					lastHashrate = curr
-				} else {
-					//arrow = gchalk.BrightYellow("·")
-					arrow = " "
-				}
-				fmt.Printf("%s Rate: %s kHashes/s, Checked hashes: %s\n", arrow, gchalk.BrightYellow(fmt.Sprintf("%d", int(math.Round(curr)))), gchalk.BrightGreen(fmt.Sprint(i)))
+				//fmt.Println(lastTime, lastHashrate, threadNum, i)
+				statusUpdate(lastTime, lastHashrate, threadNum, i)
+				//fmt.Println(lastTime, lastHashrate, threadNum, i)
 			}
-			if !util.IsHashValidBytes(util.CalculateHashBytes(newBlock), target) {
+			if !util.IsHashValidBytes(
+				util.DoubleShasumBytes(append(blockDataPreimage, strconv.FormatUint(newBlock.Solution, 10)...)),
+				target) {
 				continue
 			} else {
-				fmt.Println("\nBlock made! It took", time.Since(t).Round(time.Second/100))
-				newBlock.Hash = util.CalculateHash(newBlock)
+				close(stop)
+				fmt.Println("\nSblock made! It took", time.Since(t).Round(time.Second/100))
+				//fmt.Printf("%x", util.DoubleShasumBytes(append(blockDataPreimage, strconv.FormatUint(newBlock.Solution, 10)...)))
+				newBlock.Hash = newBlock.CalculateHash()
 				if newBlock.Tx.Amount != 0 {
 					signature, err := util.MakeSignature(privkey, newBlock.Hash)
 					if err != nil {
@@ -243,30 +255,44 @@ Mine:
 					newBlock.Tx.Signature = signature
 				}
 				fmt.Println(gchalk.BrightYellow(util.ToJSON(newBlock)))
-				//j, jerr := json.Marshal(newBlock)
-				//if jerr != nil {
-				//	fmt.Println(jerr)
-				//}
-				//fmt.Println("sending", util.ToJSON(newBlock))
-				r, err := http.Post(URL+"/blocks/new", "application/json", strings.NewReader(util.ToJSON(newBlock)))
-				if err != nil {
-					fmt.Println(err)
+				if sendBlock(newBlock) != nil {
 					return
 				}
-				fmt.Println("Sent block to server")
-				resp, ierr := ioutil.ReadAll(r.Body)
-				if ierr != nil {
-					fmt.Println(ierr)
-					return
-				}
-				fmt.Println("Server returned", gchalk.BrightGreen(string(resp)))
-				fmt.Printf("\n\n")
-				_ = r.Body.Close()
 				break Mine
 			}
 		}
 	}
-	return
+}
+
+func statusUpdate(lastTime *time.Time, lastHashrate *float64, threadNum int, i uint64) {
+	var arrow string
+	curr := 1 << 19 / time.Since(*lastTime).Seconds() / 1000.0 // iterations since last time / time since last time / 1000 = kHashes
+	*lastTime = time.Now()
+	if *lastHashrate-curr > 50 {
+		arrow = gchalk.RGB(255, 165, 0)("↓")
+		*lastHashrate = curr
+	} else if curr-(*lastHashrate) > 50 {
+		arrow = gchalk.BrightCyan("↑")
+		*lastHashrate = curr
+	} else {
+		arrow = " "
+	}
+	fmt.Printf("%d: %s Rate: %s kH/s, Checked: %s\n", threadNum, arrow, gchalk.BrightYellow(fmt.Sprintf("%d", int(math.Round(curr)))), gchalk.BrightGreen(fmt.Sprint(i)))
+}
+
+func sendBlock(newBlock *util.Sblock) error {
+	r, err := http.Post(URL+"/sblocks/new", "application/json", strings.NewReader(util.ToJSON(newBlock)))
+	if err != nil {
+		return err
+	}
+	fmt.Println("Sent block to server")
+	resp, ierr := ioutil.ReadAll(r.Body)
+	if ierr != nil {
+		return err
+	}
+	fmt.Println("Server returned", gchalk.BrightGreen(string(resp)), "\n")
+	r.Body.Close()
+	return nil
 }
 
 // loadDifficultyAndURL loads the server URL from the config file, and then loads the difficulty by contacting that server.
@@ -297,6 +323,18 @@ func loadDifficultyAndURL() error {
 }
 
 func parseArgs() {
+	if ok, i := util.ArgsHaveOption("threads", "N"); ok {
+		if len(os.Args) < i+2 {
+			fmt.Println("Too few arguments to --threads: need an amount to send")
+			os.Exit(1)
+		}
+		n, err := strconv.ParseInt(os.Args[i+1], 10, 64)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		ArgThreads = uint(n)
+	}
 	if ok, _ := util.ArgsHaveOption("help", "h"); ok {
 		fmt.Println(HelpMsg)
 		os.Exit(0)
@@ -320,7 +358,7 @@ func parseArgs() {
 		if err != nil {
 			fmt.Println("error: could not parse address: " + err.Error())
 		}
-		if err = util.IsAddressValid(ArgReceiver); err != nil {
+		if err = ArgReceiver.IsValid(); err != nil {
 			fmt.Println("error: invalid receiver address, check if you mistyped it: " + err.Error())
 			os.Exit(1)
 		}

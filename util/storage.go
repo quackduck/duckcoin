@@ -5,9 +5,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	bolt "go.etcd.io/bbolt"
 	"math/big"
 	"strconv"
+
+	bolt "go.etcd.io/bbolt"
 )
 
 var (
@@ -18,8 +19,7 @@ var (
 
 	Reward uint64 = 1e6
 
-	newestIsGenesis = false // TODO: store genesis as a normal block
-	genesis         = &Sblock{
+	genesis = &Sblock{
 		Index:     0,
 		Timestamp: 1633231790000,
 		Data: "This is the genesis block. Made by Ishan Goel: @quackduck on GitHub. " +
@@ -52,9 +52,6 @@ func DBInit() {
 		panic(err)
 	}
 	if err = db.Update(func(tx *bolt.Tx) error {
-		if tx.Bucket(numToBlock) == nil {
-			newestIsGenesis = true
-		}
 		_, err := tx.CreateBucketIfNotExists(numToBlock)
 		if err != nil {
 			return err
@@ -66,6 +63,19 @@ func DBInit() {
 		_, err = tx.CreateBucketIfNotExists(addrToBalances)
 		if err != nil {
 			return err
+		}
+
+		if err := tx.Bucket(numToBlock).Put([]byte("newest"), genesis.serialize()); err != nil {
+			panic(err)
+			//return err
+		}
+		if err := tx.Bucket(numToBlock).Put([]byte("0"), genesis.serialize()); err != nil {
+			panic(err)
+			//return err
+		}
+		if err := tx.Bucket(hashToNum).Put(serializeHash(genesis.Hash), []byte("0")); err != nil {
+			panic(err)
+			//return err
 		}
 		for k, v := range genesisBalances {
 			buf := make([]byte, binary.MaxVarintLen64)
@@ -85,14 +95,14 @@ func WriteBlockDB(blks ...*Sblock) {
 	if err := db.Update(func(tx *bolt.Tx) error {
 		for _, v := range blks {
 			// store the newest block in idx -1
-			newestIsGenesis = false
-			if err := tx.Bucket(numToBlock).Put([]byte("newest"), serialize(v)); err != nil {
+			//newestIsGenesis = false
+			if err := tx.Bucket(numToBlock).Put([]byte("newest"), v.serialize()); err != nil {
 				panic(err)
 				//return err
 			}
 
 			num := []byte(strconv.FormatUint(v.Index, 10)) // TODO: serialize idx num too
-			if err := tx.Bucket(numToBlock).Put(num, serialize(v)); err != nil {
+			if err := tx.Bucket(numToBlock).Put(num, v.serialize()); err != nil {
 				panic(err)
 				//return err
 			}
@@ -150,15 +160,12 @@ func removeFromBalance(tx *bolt.Tx, address Address, delta uint64) error {
 	return nil
 }
 
-func GetBlockByIndex(i uint64) (*Sblock, error) {
-	if i == 0 {
-		return genesis, nil
-	}
+func GetSblockByIndex(i uint64) (*Sblock, error) {
 	ret := new(Sblock)
 	if err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(numToBlock)
 		data := b.Get([]byte(strconv.FormatUint(i, 10)))
-		ret = deserialize(data)
+		ret = deserializeSblock(data)
 		if ret == nil {
 			panic("Nil deserialization at block " + strconv.FormatUint(i, 10))
 		}
@@ -169,7 +176,7 @@ func GetBlockByIndex(i uint64) (*Sblock, error) {
 	return ret, nil
 }
 
-func GetBlockByHash(hash string) (*Sblock, error) {
+func GetSblockByHash(hash string) (*Sblock, error) {
 	ret := new(Sblock)
 	if err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(hashToNum)
@@ -178,7 +185,7 @@ func GetBlockByHash(hash string) (*Sblock, error) {
 		if err != nil {
 			return err
 		}
-		ret, err = GetBlockByIndex(i)
+		ret, err = GetSblockByIndex(i)
 		return err
 	}); err != nil {
 		return nil, err
@@ -186,15 +193,12 @@ func GetBlockByHash(hash string) (*Sblock, error) {
 	return ret, nil
 }
 
-func GetNewestBlock() (*Sblock, error) {
-	if newestIsGenesis {
-		return genesis, nil
-	}
+func GetNewestSblock() (*Sblock, error) {
 	ret := new(Sblock)
 	if err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(numToBlock)
 		data := b.Get([]byte("newest"))
-		ret = deserialize(data)
+		ret = deserializeSblock(data)
 		if ret == nil {
 			panic("Nil deserialization at newest block")
 		}
@@ -241,7 +245,7 @@ func GetAllBalancesFloats() map[Address]float64 {
 	return balances
 }
 
-func serialize(b *Sblock) []byte {
+func (b *Sblock) serialize() []byte {
 	ret := make([]byte, 0, 1024)
 
 	buf := make([]byte, binary.MaxVarintLen64)
@@ -287,16 +291,6 @@ func serialize(b *Sblock) []byte {
 	return ret
 }
 
-//func serializeAddress(addr string) []byte {
-//	// serialized format: version char + decoded base64
-//	// addr format: Q + version char + base64(shasum(pubkey)[:20])
-//	return append([]byte{addr[1]}, deb64(addr[2:])...)
-//}
-//
-//func deserializeAddress(addrBytes []byte) string {
-//	return "Q" + string(addrBytes[0]) + b64(addrBytes[1:])
-//}
-
 func serializeHash(hash string) []byte {
 	hashInt, ok := new(big.Int).SetString(hash, 16)
 	if !ok {
@@ -306,7 +300,8 @@ func serializeHash(hash string) []byte {
 }
 
 func encodeVarintBytes(writeTo []byte, data ...[]byte) []byte {
-	buf := make([]byte, binary.MaxVarintLen64)
+	//buf := make([]byte, binary.MaxVarintLen64)
+	var buf []byte
 	for _, elem := range data {
 		buf = make([]byte, binary.MaxVarintLen64)
 		n := binary.PutUvarint(buf, uint64(len(elem)))
@@ -316,7 +311,7 @@ func encodeVarintBytes(writeTo []byte, data ...[]byte) []byte {
 	return writeTo
 }
 
-func deserialize(buf []byte) *Sblock {
+func deserializeSblock(buf []byte) *Sblock {
 	if len(buf) == 0 {
 		return nil
 	}
@@ -366,8 +361,108 @@ func deserialize(buf []byte) *Sblock {
 		buf, data = decodeVarintBytes(buf)
 		ret.Tx.PubKey = b64(data)
 
-		buf, data = decodeVarintBytes(buf)
+		_, data = decodeVarintBytes(buf)
 		ret.Tx.Signature = b64(data)
+	}
+	return ret
+}
+
+func (b *Lblock) serialize() []byte {
+	ret := make([]byte, 0, 1024)
+
+	buf := make([]byte, binary.MaxVarintLen64)
+	n := binary.PutUvarint(buf, b.Index)
+	ret = append(ret, buf[:n]...)
+
+	buf = make([]byte, binary.MaxVarintLen64)
+	n = binary.PutUvarint(buf, b.Timestamp)
+	ret = append(ret, buf[:n]...)
+
+	ret = encodeVarintBytes(ret, []byte(b.Data))
+
+	hash, ok := new(big.Int).SetString(b.Hash, 16)
+	if !ok {
+		panic("Setting big.Int to hash value as hexadecimal failed")
+	}
+	hashBytes := hash.Bytes()
+	ret = encodeVarintBytes(ret, hashBytes)
+
+	hash, ok = new(big.Int).SetString(b.PrevHash, 16)
+	if !ok {
+		panic("Setting big.Int to hash value as hexadecimal failed")
+	}
+	hashBytes = hash.Bytes()
+	ret = encodeVarintBytes(ret, hashBytes)
+
+	buf = make([]byte, binary.MaxVarintLen64)
+	n = binary.PutUvarint(buf, b.Solution)
+	ret = append(ret, buf[:n]...)
+
+	ret = encodeVarintBytes(ret, b.Solver.bytes[:])
+	if len(b.Sblocks) != 0 {
+		ret = append(ret, 1) // marker that Sblocks exist and should be deserialized
+
+		blocks := make([]byte, 0, 10*len(b.Sblocks)*512)
+
+		buf = make([]byte, binary.MaxVarintLen64)
+		n = binary.PutUvarint(buf, uint64(len(b.Sblocks)))
+		blocks = append(blocks, buf[:n]...)
+
+		for _, sb := range b.Sblocks {
+			blocks = encodeVarintBytes(blocks, sb.serialize())
+		}
+		ret = encodeVarintBytes(ret, blocks)
+	} else {
+		ret = append(ret, 0) // marker that sblocks do not exist and should not be deserialized
+	}
+	return ret
+}
+
+func deserializeLblock(buf []byte) *Lblock {
+	if len(buf) == 0 {
+		return nil
+	}
+	var data []byte
+	ret := new(Lblock)
+
+	i, length := binary.Uvarint(buf)
+	ret.Index = i
+	buf = buf[length:]
+
+	i, length = binary.Uvarint(buf)
+	ret.Timestamp = i
+	buf = buf[length:]
+
+	buf, data = decodeVarintBytes(buf)
+	ret.Data = string(data)
+
+	buf, data = decodeVarintBytes(buf)
+	ret.Hash = fmt.Sprintf("%064s", new(big.Int).SetBytes(data).Text(16))
+
+	buf, data = decodeVarintBytes(buf)
+	ret.PrevHash = fmt.Sprintf("%064s", new(big.Int).SetBytes(data).Text(16))
+
+	i, length = binary.Uvarint(buf)
+	ret.Timestamp = i
+	buf = buf[length:]
+	ret.Solution = i
+
+	buf, data = decodeVarintBytes(buf)
+	ret.Solver = BytesToAddress(sliceToAddrBytes(data))
+
+	if buf[0] == 1 { // marker that sblock data exists
+		buf = buf[1:]
+
+		_, blocks := decodeVarintBytes(buf)
+
+		i, length = binary.Uvarint(blocks)
+		ret.Sblocks = make([]*Sblock, i)
+		blocks = blocks[length:]
+
+		for j := uint64(0); j < i; j++ {
+			blocks, data = decodeVarintBytes(blocks)
+			ret.Sblocks[j] = deserializeSblock(data)
+		}
 	}
 	return ret
 }
@@ -385,14 +480,13 @@ func b64(b []byte) string {
 	return base64.StdEncoding.EncodeToString(b)
 }
 
-// decodeVarintStr returns the next string decoded from the format len (as varint) + string.
-// It advances buf to the next thing to be read and returns it too.
+// decodeVarintBytes returns the next chunk decoded from the format chunk len (as varint) + chunk.
+// It advances buf to the next chunk and returns it too.
 func decodeVarintBytes(readFrom []byte) (newBuf []byte, data []byte) {
 	i, length := binary.Uvarint(readFrom)
 	dataLen := int(i)
 	readFrom = readFrom[length:]
-	dataBytes := make([]byte, 0, dataLen)
-	dataBytes = readFrom[:dataLen]
+	dataBytes := readFrom[:dataLen]
 	readFrom = readFrom[dataLen:]
 	return readFrom, dataBytes
 }

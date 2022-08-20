@@ -142,24 +142,24 @@ func verifyChecksum(data []byte) bool {
 	return b // hack to compare byte slices by byte values
 }
 
-// IsAddressValid verifies the checksum built into addresses, and checks the address format
-func IsAddressValid(addr Address) error {
-	fromEmoji, err := EmojiToAddress(addr.Emoji)
+// IsValid verifies the checksum built into addresses, and checks the address format
+func (a *Address) IsValid() error {
+	fromEmoji, err := EmojiToAddress(a.Emoji)
 	if err != nil {
 		return err
 	}
-	fromText, err := TextToAddress(addr.Text)
+	fromText, err := TextToAddress(a.Text)
 	if err != nil {
 		return err
 	}
-	fromBytes := BytesToAddress(addr.bytes)
+	fromBytes := BytesToAddress(a.bytes)
 
 	if !(fromBytes == fromText && fromText == fromEmoji) {
-		return errors.New("invalid address: inconsistent formats: " + fmt.Sprint(addr))
+		return errors.New("invalid address: inconsistent formats: " + fmt.Sprint(a))
 	}
 
 	if !verifyChecksum(fromText.bytes[:]) {
-		return errors.New("invalid address: checksum verification failed: " + fmt.Sprint(addr))
+		return errors.New("invalid address: checksum verification failed: " + fmt.Sprint(a))
 	}
 	return nil
 }

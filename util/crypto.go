@@ -9,8 +9,10 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"math/big"
 	"strconv"
+	"time"
 )
 
 const (
@@ -28,14 +30,14 @@ type Lblock struct {
 	Data string
 	// Hash stores the hash of this Lblock as computed by CalculateHash
 	Hash string
-	// PrevHash is the hash of the previous Sblock
+	// PrevHash is the hash of the previous Lblock
 	PrevHash string
 	// Solution is the nonce value that makes the Hash be under some target value
 	Solution uint64
 	// Solver is the address of the sender. Address format: Q + version char + base64(shasum(pubkey)[:20])
 	Solver Address `json:",omitempty"`
-	// Sblocks must contain 10 Sblocks, validators should check for this condition.
-	Sblocks []Sblock
+	// Sblocks contains the Sblocks part of this Lblock
+	Sblocks []*Sblock
 }
 
 // An Sblock is one block in the chain of some Lnode. It optionally contains a transaction and arbitrary data.
@@ -88,36 +90,56 @@ func GetTarget(difficulty uint64) *big.Int {
 }
 
 // CalculateHash calculates the hash of a Sblock.
-func CalculateHash(block *Sblock) string {
-	return hex.EncodeToString(CalculateHashBytes(block))
+func (b *Sblock) CalculateHash() string {
+	return hex.EncodeToString(b.CalculateHashBytes())
 }
 
 // CalculateHashBytes calculates the hash of a Sblock.
-func CalculateHashBytes(b *Sblock) []byte {
-	return DoubleShasumBytes(
-		[]byte(strconv.FormatUint(b.Index, 10) + strconv.FormatUint(b.Timestamp, 10) + b.Data + b.PrevHash + strconv.FormatUint(b.Solution, 10) + string(b.Solver.bytes[:]) + // b.Hash is left out cause that's what's set later as the result of this func
-			b.Tx.Data + string(b.Tx.Sender.bytes[:]) + string(b.Tx.Receiver.bytes[:]) + strconv.FormatUint(b.Tx.Amount, 10), // notice b.Tx.Signature is left out, that's also set later depending on this function's result
-		),
+func (b *Sblock) CalculateHashBytes() []byte {
+	return DoubleShasumBytes(b.Preimage())
+}
+
+// PreimageWOSolution returns the data to be hashed to create the hash of an Sblock, but without the Solution field taken into account.
+// This is useful when mining.
+func (b *Sblock) PreimageWOSolution() []byte {
+	// lenCtrl hashes the bytes that a represents
+	lenCtrl := func(a string) string { return string(DoubleShasumBytes([]byte(a))) }
+	// all data fields are length-controlled so that the preimage always has around the same size (amount + timestamp + solution sizes can change, but not much)
+	return []byte(strconv.FormatUint(b.Index, 10) + strconv.FormatUint(b.Timestamp, 10) + lenCtrl(b.Data) + b.PrevHash + string(b.Solver.bytes[:]) + // b.Hash is left out cause that's what's set later as the result of this func
+		lenCtrl(b.Tx.Data) + string(b.Tx.Sender.bytes[:]) + string(b.Tx.Receiver.bytes[:]) + strconv.FormatUint(b.Tx.Amount, 10), // notice b.Tx.Signature is left out, that's also set later depending on this function's result
 	)
 }
 
-// CalculateHashL calculates the hash of an Lblock.
-func CalculateHashL(block *Lblock) string {
-	return hex.EncodeToString(CalculateHashBytesL(block))
+func (b *Sblock) Preimage() []byte {
+	return append(b.PreimageWOSolution(), strconv.FormatUint(b.Solution, 10)...)
 }
 
-// CalculateHashBytesL calculates the hash of an Lblock.
-func CalculateHashBytesL(b *Lblock) []byte {
+// CalculateHash calculates the hash of an Lblock.
+func (b *Lblock) CalculateHash() string {
+	return hex.EncodeToString(b.CalculateHashBytes())
+}
+
+// CalculateHashBytes calculates the hash of an Lblock.
+func (b *Lblock) CalculateHashBytes() []byte {
+	return DoubleShasumBytes(b.Preimage())
+}
+
+func (b *Lblock) PreimageWOSolution() []byte {
 	sblocksConcatenated := ""
 	for i := range b.Sblocks {
-		sblocksConcatenated += strconv.FormatUint(b.Index, 10) + strconv.FormatUint(b.Timestamp, 10) + b.Data + b.Hash + b.PrevHash + strconv.FormatUint(b.Solution, 10) + string(b.Solver.bytes[:]) + // b.Hash is left out cause that's what's set later as the result of this func
-			b.Sblocks[i].Tx.Data + string(b.Sblocks[i].Tx.Sender.bytes[:]) + string(b.Sblocks[i].Tx.Receiver.bytes[:]) + strconv.FormatUint(b.Sblocks[i].Tx.Amount, 10)
+		sblocksConcatenated += string(b.Sblocks[i].Preimage())
 	}
-	return DoubleShasumBytes(
-		[]byte(strconv.FormatUint(b.Index, 10) + strconv.FormatUint(b.Timestamp, 10) + b.Data + b.PrevHash + strconv.FormatUint(b.Solution, 10) + string(b.Solver.bytes[:]) + // b.Hash is left out cause that's what's set later as the result of this func
-			sblocksConcatenated,
-		),
+	// lenCtrl hashes the bytes that a represents
+	// see comments in PreimageWOSolution for why lenCtrl is used
+	lenCtrl := func(a string) string { return string(DoubleShasumBytes([]byte(a))) }
+
+	return []byte(strconv.FormatUint(b.Index, 10) + strconv.FormatUint(b.Timestamp, 10) + lenCtrl(b.Data) + b.PrevHash + string(b.Solver.bytes[:]) + // b.Hash is left out cause that's what's set later as the result of this func
+		lenCtrl(sblocksConcatenated),
 	)
+}
+
+func (b *Lblock) Preimage() []byte {
+	return append(b.PreimageWOSolution(), strconv.FormatUint(b.Solution, 10)...)
 }
 
 // MakeSignature signs a message with a private key.
@@ -154,7 +176,7 @@ func IsHashValid(hash string, target *big.Int) bool {
 	if !ok {
 		return ok
 	}
-	return IsHashValidBytes(d.FillBytes(make([]byte, 32, 32)), target)
+	return IsHashValidBytes(d.FillBytes(make([]byte, 32)), target)
 }
 
 // IsHashValidBytes checks if a hash is a valid block hash
@@ -246,4 +268,71 @@ func duckToPublicKey(duckkey string) (*ecdsa.PublicKey, error) {
 		return nil, errors.New("pubkey is not of type *ecdsa.PublicKey")
 	}
 	return pubkey, nil
+}
+
+func IsValid(newBlock, oldBlock *Sblock, target *big.Int) error {
+	err := IsValidNoCheckDB(newBlock, oldBlock, target)
+	if err != nil {
+		return err
+	}
+	if uint64(time.Now().UnixMilli())-newBlock.Timestamp > 1e3*60*5 { // 5 minutes in millis
+		return errors.New("Sblock timestamp is not within 5 minutes before current time. What are you trying to pull off here?")
+	}
+	if newBlock.Tx.Amount > 0 {
+		senderBalance, err := GetBalanceByAddr(newBlock.Tx.Sender)
+		if err != nil {
+			return errors.New("Internal Server Error")
+		}
+		if senderBalance < newBlock.Tx.Amount { // notice that there is no reward for this block's PoW added to the sender's account first
+			return fmt.Errorf("Insufficient balance %d microquacks (sender balance) is less than %d microquacks (tx amount)", senderBalance, newBlock.Tx.Amount)
+		}
+	}
+	return nil
+}
+
+func IsValidNoCheckDB(newBlock, oldBlock *Sblock, target *big.Int) error {
+	const blockDataLimit = 1e3 * 250
+	const txDataLimit = 1e3 * 250
+
+	//if newBlock.Tx.Amount < 0 {
+	//	return errors.New("Amount is negative")
+	//}
+	if oldBlock.Index+1 != newBlock.Index {
+		return errors.New("Index should be " + strconv.FormatInt(int64(oldBlock.Index+1), 10))
+	}
+	if oldBlock.Hash != newBlock.PrevHash {
+		return errors.New("PrevHash should be " + oldBlock.Hash)
+	}
+	if err := newBlock.Solver.IsValid(); err != nil {
+		return errors.New("Sender is invalid: " + err.Error())
+	}
+	if newBlock.CalculateHash() != newBlock.Hash {
+		return errors.New("Sblock Hash does not match actual hash.")
+	}
+	if !IsHashValid(newBlock.Hash, target) {
+		return errors.New("Sblock is not a solution (does not have Difficulty zeros in hash)")
+	}
+	if len(newBlock.Data) > blockDataLimit {
+		return errors.New("Sblock's Data field is too large. Should be >= 250 kb")
+	}
+	if len(newBlock.Tx.Data) > txDataLimit {
+		return errors.New("Transaction's Data field is too large. Should be >= 250 kb")
+	}
+	if newBlock.Tx.Amount > 0 {
+		if newBlock.Tx.Sender.IsValid() != nil || newBlock.Tx.Receiver.IsValid() != nil || !IsValidBase64(newBlock.Tx.PubKey) ||
+			!IsValidBase64(newBlock.Tx.Signature) {
+			return errors.New("At least one of the Sender, Receiver, PubKey or Signature is not valid. What are you trying to pull here?")
+		}
+		if KeyToAddress(newBlock.Tx.PubKey) != newBlock.Tx.Sender {
+			return errors.New("Pubkey does not match sender address")
+		}
+		if ok, err := CheckSignature(newBlock.Tx.Signature, newBlock.Tx.PubKey, newBlock.Hash); !ok {
+			if err != nil {
+				return err
+			} else {
+				return errors.New("Invalid signature")
+			}
+		}
+	}
+	return nil
 }
