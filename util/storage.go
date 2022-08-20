@@ -267,7 +267,7 @@ func initUnconfirmedRewardMap() error {
 		return nil
 	}
 
-	for i := latest.Index - 1; i > 0 && i > latest.Index-10; i-- {
+	for i := latest.Index - 1; i > 0 && (i < 10 || i > latest.Index-10); i-- {
 		block, err := GetSblockByIndex(i)
 		if err != nil {
 			return err
