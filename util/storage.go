@@ -144,21 +144,24 @@ func setAddressBalance(tx *bolt.Tx, address Address, balance uint64) {
 	}
 }
 
-func getAddressBalance(tx *bolt.Tx, address Address) uint64 {
+func getAddressBalanceWithUnconfirmed(tx *bolt.Tx, address Address) uint64 {
 	balanceBytes := tx.Bucket(addrToBalances).Get(address.bytes[:])
 	if balanceBytes == nil {
 		return 0
 	}
 	balance, _ := binary.Uvarint(balanceBytes)
-	balance -= Reward * unconfirmedRewardMap[address] // subtract the unconfirmed reward
 	return balance
+}
+
+func getAddressBalance(tx *bolt.Tx, address Address) uint64 {
+	return getAddressBalanceWithUnconfirmed(tx, address) - Reward*unconfirmedRewardMap[address] // subtract the unconfirmed reward
 }
 
 func addToBalance(tx *bolt.Tx, address Address, delta uint64) {
 	if delta == 0 {
 		return
 	}
-	setAddressBalance(tx, address, getAddressBalance(tx, address)+delta)
+	setAddressBalance(tx, address, getAddressBalanceWithUnconfirmed(tx, address)+delta)
 }
 
 func removeFromBalance(tx *bolt.Tx, address Address, delta uint64) error {
@@ -234,9 +237,10 @@ func GetBalanceByAddr(addr Address) (uint64, error) {
 }
 
 // GetAllBalances returns a map of addresses to the balance in microquacks
-func GetAllBalances() (map[Address]uint64, error) {
+func GetAllBalances() map[Address]uint64 {
 	ret := make(map[Address]uint64, 1000)
-	return ret, db.View(func(tx *bolt.Tx) error {
+	// inside func never returns an error
+	_ = db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(addrToBalances)
 		return b.ForEach(func(addr, balanceData []byte) error {
 			balance, _ := binary.Uvarint(balanceData)
@@ -245,6 +249,7 @@ func GetAllBalances() (map[Address]uint64, error) {
 			return nil
 		})
 	})
+	return ret
 }
 
 func initUnconfirmedRewardMap() error {
@@ -283,7 +288,7 @@ func updateUnconfirmedRewardMap(minerOfNewBlock Address, latestIndex uint64) err
 
 // GetAllBalancesFloats returns a map of addresses to the balance in ducks
 func GetAllBalancesFloats() map[Address]float64 {
-	l, _ := GetAllBalances()
+	l := GetAllBalances()
 	balances := make(map[Address]float64, len(l))
 	for address, balance := range l {
 		balances[address] = float64(balance) / float64(MicroquacksPerDuck)
