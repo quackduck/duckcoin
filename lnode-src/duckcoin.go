@@ -225,7 +225,7 @@ func handleWriteSblock(w http.ResponseWriter, r *http.Request) {
 			Sblocks:   []*util.Sblock{b, b},
 		})
 		if err != nil {
-			fmt.Println("error: ", err)
+			fmt.Println("error:", err)
 		}
 	}()
 	respondWithJSON(w, http.StatusCreated, "Sblock accepted.")
