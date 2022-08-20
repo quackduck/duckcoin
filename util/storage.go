@@ -38,7 +38,8 @@ var (
 			Signature: "",
 		},
 	}
-	genesisBalances = map[Address]uint64{
+	unconfirmedRewardMap = make(map[Address]uint64, 10)
+	genesisBalances      = map[Address]uint64{
 		Address{}: 1000 * MicroquacksPerDuck,
 	}
 )
@@ -89,30 +90,38 @@ func DBInit() {
 	}); err != nil {
 		panic(err)
 	}
+	err = initUnconfirmedRewardMap()
+	if err != nil {
+		panic(err)
+	}
 }
 
 func WriteBlockDB(blks ...*Sblock) {
 	if err := db.Update(func(tx *bolt.Tx) error {
 		for _, v := range blks {
+			err := updateUnconfirmedRewardMap(v.Solver, v.Index)
+			if err != nil {
+				return err
+			}
 			// store the newest block in idx -1
 			//newestIsGenesis = false
-			if err := tx.Bucket(numToBlock).Put([]byte("newest"), v.serialize()); err != nil {
+			if err = tx.Bucket(numToBlock).Put([]byte("newest"), v.serialize()); err != nil {
 				panic(err)
 				//return err
 			}
 
 			num := []byte(strconv.FormatUint(v.Index, 10)) // TODO: serialize idx num too
-			if err := tx.Bucket(numToBlock).Put(num, v.serialize()); err != nil {
+			if err = tx.Bucket(numToBlock).Put(num, v.serialize()); err != nil {
 				panic(err)
 				//return err
 			}
-			if err := tx.Bucket(hashToNum).Put(serializeHash(v.Hash), num); err != nil {
+			if err = tx.Bucket(hashToNum).Put(serializeHash(v.Hash), num); err != nil {
 				panic(err)
 				//return err
 			}
 			if v.Tx.Amount > 0 && v.Tx.Sender != v.Tx.Receiver {
 				// no reward for solver so we can give that reward to the lnodes (TODO).
-				err := removeFromBalance(tx, v.Tx.Sender, v.Tx.Amount)
+				err = removeFromBalance(tx, v.Tx.Sender, v.Tx.Amount)
 				if err != nil {
 					return err
 				}
@@ -137,7 +146,11 @@ func setAddressBalance(tx *bolt.Tx, address Address, balance uint64) {
 
 func getAddressBalance(tx *bolt.Tx, address Address) uint64 {
 	balanceBytes := tx.Bucket(addrToBalances).Get(address.bytes[:])
+	if balanceBytes == nil {
+		return 0
+	}
 	balance, _ := binary.Uvarint(balanceBytes)
+	balance -= Reward * unconfirmedRewardMap[address] // subtract the unconfirmed reward
 	return balance
 }
 
@@ -212,9 +225,7 @@ func GetNewestSblock() (*Sblock, error) {
 func GetBalanceByAddr(addr Address) (uint64, error) {
 	var ret uint64
 	if err := db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket(addrToBalances)
-		data := b.Get(addr.bytes[:])
-		ret, _ = binary.Uvarint(data)
+		ret = getAddressBalance(tx, addr)
 		return nil
 	}); err != nil {
 		return 0, err
@@ -229,10 +240,45 @@ func GetAllBalances() (map[Address]uint64, error) {
 		b := tx.Bucket(addrToBalances)
 		return b.ForEach(func(addr, balanceData []byte) error {
 			balance, _ := binary.Uvarint(balanceData)
-			ret[BytesToAddress(sliceToAddrBytes(addr))] = balance
+			address := BytesToAddress(sliceToAddrBytes(addr))
+			ret[address] = balance - Reward*unconfirmedRewardMap[address]
 			return nil
 		})
 	})
+}
+
+func initUnconfirmedRewardMap() error {
+	unconfirmedRewardMap = make(map[Address]uint64, 10)
+	latest, err := GetNewestSblock()
+	if err != nil {
+		return err
+	}
+	if latest.Index != 0 {
+		unconfirmedRewardMap[latest.Solver]++
+	}
+	// get last 10 blocks excluding the latest one
+	for i := latest.Index - 10; i < latest.Index && i > 0; i++ {
+		block, err := GetSblockByIndex(i)
+		if err != nil {
+			return err
+		}
+		unconfirmedRewardMap[block.Solver]++
+	}
+	return nil
+}
+
+// allows not-counting the rewards offered by the latest 10 blocks to encourage node cooperation on longest chain
+func updateUnconfirmedRewardMap(minerOfNewBlock Address, latestIndex uint64) error {
+	unconfirmedRewardMap[minerOfNewBlock]++
+	// get the 11th block from the top and mark as confirmed
+	if latestIndex > 10 {
+		block, err := GetSblockByIndex(latestIndex - 10) // eg. 0, 1 ... 10, and 11 is added. mark 1 as confirmed
+		if err != nil {
+			return err
+		}
+		unconfirmedRewardMap[block.Solver]--
+	}
+	return nil
 }
 
 // GetAllBalancesFloats returns a map of addresses to the balance in ducks
