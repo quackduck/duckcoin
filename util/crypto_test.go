@@ -183,19 +183,18 @@ func TestIsSblockValidNoCheckDB(t *testing.T) {
 }
 
 func TestIsValidBase64(t *testing.T) {
-	type args struct {
-		s string
-	}
 	tests := []struct {
 		name string
-		args args
+		s    string
 		want bool
 	}{
+		{"valid base64", "aGVsbG8K", true},
+		{"invalid base64", "aGVsbG8K;", false},
 		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := IsValidBase64(tt.args.s); got != tt.want {
+			if got := IsValidBase64(tt.s); got != tt.want {
 				t.Errorf("IsValidBase64() = %v, want %v", got, tt.want)
 			}
 		})
@@ -203,22 +202,10 @@ func TestIsValidBase64(t *testing.T) {
 }
 
 func TestKeyToAddress(t *testing.T) {
-	type args struct {
-		key string
-	}
-	tests := []struct {
-		name string
-		args args
-		want Address
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := KeyToAddress(tt.args.key); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("KeyToAddress() = %v, want %v", got, tt.want)
-			}
-		})
+	want := Address{Emoji: "🦆😾📎🏥🐷🌇⛲💣🍾🌍👨🎣🤬🔅🗄💋🦿😧🦔😐", Text: "QClNW9qpw0zCYuO5q8lGU6SFQmCQ1T7EAm", bytes: [24]uint8{0xf1, 0x1, 0xe5, 0xa6, 0xc7, 0x77, 0x32, 0x4a, 0xc5, 0xbf, 0x4d, 0xba, 0xcb, 0x16, 0xc8, 0x9, 0xc8, 0xd8, 0xfb, 0x61, 0xa5, 0xbe, 0x5e, 0xee}}
+
+	if got := KeyToAddress("MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEonWWCXkG0K8EYkt7xv/4CkZpxY1nMpeoT51oTPfXcuYcJ/eaZVipyGfh9ZitqfOQkiDhJ/NLgBj5MB/Jr5jJyw=="); !reflect.DeepEqual(got, want) {
+		t.Errorf("KeyToAddress() = %v, want %v", got, want)
 	}
 }
 
@@ -402,80 +389,6 @@ func TestSblock_CalculateHashBytes(t *testing.T) {
 			}
 			if got := b.CalculateHashBytes(); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("CalculateHashBytes() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestSblock_Preimage(t *testing.T) {
-	type fields struct {
-		Index     uint64
-		Timestamp uint64
-		Data      string
-		Hash      string
-		PrevHash  string
-		Solution  uint64
-		Solver    Address
-		Tx        Transaction
-	}
-	tests := []struct {
-		name   string
-		fields fields
-		want   []byte
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			b := &Sblock{
-				Index:     tt.fields.Index,
-				Timestamp: tt.fields.Timestamp,
-				Data:      tt.fields.Data,
-				Hash:      tt.fields.Hash,
-				PrevHash:  tt.fields.PrevHash,
-				Solution:  tt.fields.Solution,
-				Solver:    tt.fields.Solver,
-				Tx:        tt.fields.Tx,
-			}
-			if got := b.Preimage(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Preimage() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestSblock_PreimageWOSolution(t *testing.T) {
-	type fields struct {
-		Index     uint64
-		Timestamp uint64
-		Data      string
-		Hash      string
-		PrevHash  string
-		Solution  uint64
-		Solver    Address
-		Tx        Transaction
-	}
-	tests := []struct {
-		name   string
-		fields fields
-		want   []byte
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			b := &Sblock{
-				Index:     tt.fields.Index,
-				Timestamp: tt.fields.Timestamp,
-				Data:      tt.fields.Data,
-				Hash:      tt.fields.Hash,
-				PrevHash:  tt.fields.PrevHash,
-				Solution:  tt.fields.Solution,
-				Solver:    tt.fields.Solver,
-				Tx:        tt.fields.Tx,
-			}
-			if got := b.PreimageWOSolution(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("PreimageWOSolution() = %v, want %v", got, tt.want)
 			}
 		})
 	}
