@@ -291,7 +291,7 @@ func parseLnodesFile(f string) ([]string, error) {
 	newArr := make([]string, 0, len(s))
 	for i := range s {
 		if strings.TrimSpace(s[i]) != "" {
-			newArr = append(newArr, strings.TrimPrefix(strings.TrimSpace(s[i]), "/"))
+			newArr = append(newArr, strings.TrimRight(strings.TrimSpace(s[i]), "/"))
 		}
 	}
 	return newArr, nil

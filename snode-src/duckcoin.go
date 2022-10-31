@@ -301,7 +301,7 @@ func loadDifficultyAndURL() error {
 		_ = os.WriteFile(URLFile, []byte(URL), 0644)
 		return nil
 	}
-	URL = strings.TrimSuffix(strings.TrimSpace(string(data)), "/")
+	URL = strings.TrimRight(strings.TrimSpace(string(data)), "/")
 	r, err := http.Get(URL + "/difficulty")
 	if err != nil {
 		return err
