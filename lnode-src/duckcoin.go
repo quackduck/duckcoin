@@ -192,8 +192,6 @@ func handleGetNewest(w http.ResponseWriter, _ *http.Request) {
 }
 
 func handleWriteSblock(w http.ResponseWriter, r *http.Request) {
-
-	fmt.Println("Received a new block")
 	defer r.Body.Close()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -253,18 +251,15 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 
 func reCalcDifficulty() {
 	var avg uint64 = 0
-	var i uint64 = 0
 	for _, v := range Past100Durations {
 		avg += uint64(v)
-		i++
 	}
-	avg /= i
-	avgDur := time.Duration(avg)
-	fmt.Printf("The average duration between blocks for the past %d blocks was: %s\n", ReCalcInterval, avgDur.String())
+	avg /= uint64(len(Past100Durations))
+	fmt.Printf("The average duration between blocks for the past %d blocks was: %s\n", ReCalcInterval, time.Duration(avg).String())
 	// TargetDuration/avgDur is the scale factor for what the current target is
 	// if avgDur is higher than TargetDuration, then the Difficulty will be made lower
 	// if avgDur is lower, then the Difficulty will be made higher
-	Difficulty = (Difficulty * uint64(TargetDuration)) / avg
+	Difficulty *= uint64(TargetDuration) / avg
 	fmt.Println("\nRecalculated difficulty. It is now", Difficulty)
 }
 

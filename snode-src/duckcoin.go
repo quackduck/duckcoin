@@ -151,7 +151,7 @@ func mine(numOfBlocks, amount uint64, receiver util.Address, blockData, txData s
 				_ = json.NewDecoder(r.Body).Decode(&currBlock)
 				_ = r.Body.Close()
 				//fmt.Println("Newest block:", currBlock.Index)
-				if currBlock != b && currBlock.Solver != Addr { // a new block that we didn't solve?
+				if currBlock.Index != b.Index { // a new block?
 					fmt.Println(gchalk.RGB(255, 165, 0)("Gotta restart, someone else got block " + strconv.Itoa(int(currBlock.Index))))
 					b = currBlock
 					for j := uint(0); j <= ArgThreads; j++ { // slightly hacky way to notify all threads to restart
