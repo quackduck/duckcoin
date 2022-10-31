@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"math/big"
 	"net/http"
@@ -286,7 +285,7 @@ func sendBlock(newBlock *util.Sblock) error {
 		return err
 	}
 	fmt.Println("Sent block to server")
-	resp, ierr := ioutil.ReadAll(r.Body)
+	resp, ierr := io.ReadAll(r.Body)
 	if ierr != nil {
 		return err
 	}
@@ -297,13 +296,12 @@ func sendBlock(newBlock *util.Sblock) error {
 
 // loadDifficultyAndURL loads the server URL from the config file, and then loads the difficulty by contacting that server.
 func loadDifficultyAndURL() error {
-	data, err := ioutil.ReadFile(URLFile)
+	data, err := os.ReadFile(URLFile)
 	if err != nil {
-		_ = ioutil.WriteFile(URLFile, []byte(URL), 0644)
+		_ = os.WriteFile(URLFile, []byte(URL), 0644)
 		return nil
 	}
-	URL = strings.TrimSpace(string(data))
-
+	URL = strings.TrimSuffix(strings.TrimSpace(string(data)), "/")
 	r, err := http.Get(URL + "/difficulty")
 	if err != nil {
 		return err

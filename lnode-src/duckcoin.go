@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"strconv"
@@ -193,6 +192,8 @@ func handleGetNewest(w http.ResponseWriter, _ *http.Request) {
 }
 
 func handleWriteSblock(w http.ResponseWriter, r *http.Request) {
+
+	fmt.Println("Received a new block")
 	defer r.Body.Close()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -204,31 +205,30 @@ func handleWriteSblock(w http.ResponseWriter, r *http.Request) {
 		respondWithJSON(w, http.StatusBadRequest, "Bad JSON request. This may be caused by a block that is too big (more than 1mb) but these are usually with malicious intent. "+err.Error())
 		return
 	}
-
-	if err := util.IsValid(b, NewestBlock, util.GetTarget(Difficulty)); err == nil {
+	err := util.IsValid(b, NewestBlock, util.GetTarget(Difficulty))
+	if err == nil {
 		addBlockToChain(b)
-	} else {
-		respondWithJSON(w, http.StatusBadRequest, "Invalid block. "+err.Error())
-		fmt.Println("Rejected a block")
+		respondWithJSON(w, http.StatusCreated, "Sblock accepted.")
 		return
 	}
+	respondWithJSON(w, http.StatusBadRequest, "Invalid block. "+err.Error())
+	fmt.Println("Rejected a block")
 
-	go func() {
-		err := sendToLnodes(&util.Lblock{ // just a test for now, no mining is happening
-			Index:     23,
-			Timestamp: b.Timestamp,
-			Data:      "Yo bro, I just got a new block! " + b.Hash,
-			Hash:      b.Hash,
-			PrevHash:  b.PrevHash,
-			Solution:  b.Solution,
-			Solver:    b.Solver,
-			Sblocks:   []*util.Sblock{b, b},
-		})
-		if err != nil {
-			fmt.Println("error:", err)
-		}
-	}()
-	respondWithJSON(w, http.StatusCreated, "Sblock accepted.")
+	//go func() {
+	//	err := sendToLnodes(&util.Lblock{ // just a test for now, no mining is happening
+	//		Index:     23,
+	//		Timestamp: b.Timestamp,
+	//		Data:      "Yo bro, I just got a new block! " + b.Hash,
+	//		Hash:      b.Hash,
+	//		PrevHash:  b.PrevHash,
+	//		Solution:  b.Solution,
+	//		Solver:    b.Solver,
+	//		Sblocks:   []*util.Sblock{b, b},
+	//	})
+	//	if err != nil {
+	//		fmt.Println("error:", err)
+	//	}
+	//}()
 }
 
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
@@ -283,7 +283,7 @@ func getConfigDir() string {
 }
 
 func parseLnodesFile(f string) ([]string, error) {
-	data, err := ioutil.ReadFile(f)
+	data, err := os.ReadFile(f)
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +291,7 @@ func parseLnodesFile(f string) ([]string, error) {
 	newArr := make([]string, 0, len(s))
 	for i := range s {
 		if strings.TrimSpace(s[i]) != "" {
-			newArr = append(newArr, strings.TrimSpace(s[i]))
+			newArr = append(newArr, strings.TrimPrefix(strings.TrimSpace(s[i]), "/"))
 		}
 	}
 	return newArr, nil
